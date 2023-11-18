@@ -1,4 +1,4 @@
-"""Switch platform for integration_blueprint."""
+"""Switch platform for btclock."""
 from __future__ import annotations
 
 from homeassistant.components.switch import SwitchEntity, SwitchEntityDescription
@@ -29,7 +29,7 @@ async def async_setup_entry(hass, entry, async_add_devices):
 
 
 class BtclockSwitch(BtclockEntity, SwitchEntity):
-    """integration_blueprint switch class."""
+    """btclock switch class."""
 
     def __init__(
         self,

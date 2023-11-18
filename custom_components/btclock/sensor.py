@@ -1,4 +1,4 @@
-"""Sensor platform for integration_blueprint."""
+"""Sensor platform for btclock."""
 from __future__ import annotations
 
 from homeassistant.components.sensor import SensorEntity, SensorEntityDescription
@@ -29,7 +29,7 @@ async def async_setup_entry(hass, entry, async_add_devices):
 
 
 class BtclockSensor(BtclockEntity, SensorEntity):
-    """integration_blueprint Sensor class."""
+    """btclock Sensor class."""
 
     def __init__(
         self,

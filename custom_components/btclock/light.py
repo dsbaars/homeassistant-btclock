@@ -1,4 +1,4 @@
-"""Light platform for integration_blueprint."""
+"""Light platform for btclock."""
 from __future__ import annotations
 
 from homeassistant.components.light import LightEntity, LightEntityDescription, ColorMode, ATTR_RGB_COLOR
@@ -31,7 +31,7 @@ async def async_setup_entry(hass, entry, async_add_devices):
 
 
 class BtclockLight(BtclockEntity, LightEntity):
-    """integration_blueprint switch class."""
+    """btclock switch class."""
 
     def __init__(
         self,

@@ -11,6 +11,9 @@
             "onAutoForward": "notify"
         }
     },
+    "runArgs": [
+        "--network=bridge",
+    ],
     "customizations": {
         "vscode": {
             "extensions": [

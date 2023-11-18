@@ -1,11 +1,11 @@
 {
     "config": {
+        "flow_title": "BTClock: {hostname}",
         "step": {
             "user": {
-                "description": "",
+                "description": "Click on the bottom button to see the IP-address on the device",
                 "data": {
-                    "username": "Username",
-                    "password": "Password"
+                    "host": "Hostname or IP-address"
                 }
             }
         },
