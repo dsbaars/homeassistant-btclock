@@ -1,10 +1,8 @@
 # BTClock Integration
 
-[![GitHub Release][releases-shield]][releases]
-[![GitHub Activity][commits-shield]][commits]
-[![License][license-shield]](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-_Integration to integrate with [BTClock][https://github.com/btclock]._
+_Integration to integrate with [BTClock](https://github.com/btclock)._
 
 **This integration will set up the following platforms.**
 
