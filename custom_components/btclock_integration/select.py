@@ -61,7 +61,7 @@ class BtclockSensor(BtclockEntity, SelectEntity):
     @property
     def current_option(self) -> str:
         """Return the native value of the sensor."""
-        return self.screenMap[self.coordinator.data.get("currentScreen")]
+        return self.screenMap.get(self.coordinator.data.get("currentScreen"))
 
     async def async_select_option(self, option: str) -> None:
         """Change the selected option."""

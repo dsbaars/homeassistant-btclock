@@ -49,4 +49,4 @@ class BtclockSensor(BtclockEntity, SensorEntity):
     @property
     def native_value(self) -> str:
         """Return the native value of the sensor."""
-        return self.screenMap[self.coordinator.data.get("currentScreen")]
+        return self.screenMap.get(self.coordinator.data.get("currentScreen"))

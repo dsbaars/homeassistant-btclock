@@ -6,8 +6,6 @@ from homeassistant import config_entries
 from homeassistant.const import CONF_HOST
 from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
-from .typing import DiscoveryInfoType
-
 
 from .btclock import Btclock
 
@@ -18,7 +16,7 @@ class BtclockFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     """Config flow for Blueprint."""
 
     VERSION = 1
-    async def async_step_zeroconf(self, discovery_info: DiscoveryInfoType):
+    async def async_step_zeroconf(self, discovery_info):
         return await self.async_step_discovery_confirm()
 
     async def async_step_user(
