@@ -1,3 +1,4 @@
+"""BTClock client."""
 import aiohttp
 import async_timeout
 
@@ -5,13 +6,18 @@ class BtclockClientError(Exception):
     """Exception to indicate a general API error."""
 
 class Btclock:
+    """BTClock client."""
+
     def __init__(self, host, session: aiohttp.ClientSession):
+        """BTClock client."""
         self._host = host
         self._session = session
         self._status_data = None
         self._settings_data = None
 
     async def load_settings(self):
+        """Get settings from API."""
+
         response = await self._api_wrapper(
             method="get",
             url=f"http://{self._host}/api/settings",
@@ -21,6 +27,8 @@ class Btclock:
 
 
     async def update_status(self):
+        """Update status from API."""
+
         response = await self._api_wrapper(
             method="get",
             url=f"http://{self._host}/api/status",
@@ -29,6 +37,7 @@ class Btclock:
         self._status_data = response
 
     def get_screens(self):
+        """Get screen id mapping from API."""
         key_value_map = {}
 
         for screen in self._settings_data.get('screens'):

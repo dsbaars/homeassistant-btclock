@@ -17,6 +17,8 @@ class BtclockFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
     async def async_step_zeroconf(self, discovery_info):
+        """Handle a flow initialized by zeroconf."""
+
         return await self.async_step_discovery_confirm()
 
     async def async_step_user(
