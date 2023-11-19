@@ -28,10 +28,14 @@ class BtclockFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 
         hostname = discovery_info.hostname[:-1]
         short_hostname = hostname.removesuffix(".local")
+
+        await self.async_set_unique_id(short_hostname)
         self._async_abort_entries_match({CONF_HOST: hostname})
 
         self.context["title_placeholders"] = {"hostname": short_hostname}
         self._host = hostname
+
+
 
         self.discovery_info.update(
             {
