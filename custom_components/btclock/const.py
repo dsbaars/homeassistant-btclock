@@ -7,3 +7,4 @@ NAME = "BTClock"
 DOMAIN = "btclock"
 VERSION = "0.0.1"
 ATTRIBUTION = ""
+DEFAULT_SCAN_INTERVAL = 30

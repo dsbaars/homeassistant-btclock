@@ -1,9 +1,18 @@
 """BTClock client."""
+from __future__ import annotations
+
+import asyncio
+import socket
+
 import aiohttp
 import async_timeout
 
 class BtclockClientError(Exception):
     """Exception to indicate a general API error."""
+
+class BtclockClientCommunicationError(BtclockClientError):
+    """Exception to indicate a general API error."""
+
 
 class Btclock:
     """BTClock client."""
@@ -135,6 +144,14 @@ class Btclock:
                         return await response.json()
                     else:
                         return
+            except asyncio.TimeoutError as exception:
+                raise BtclockClientCommunicationError(
+                    "Timeout error fetching information",
+                ) from exception
+            except (aiohttp.ClientError, socket.gaierror) as exception:
+                raise BtclockClientCommunicationError(
+                    "Error fetching information",
+                ) from exception
             except Exception as exception:  # pylint: disable=broad-except
                 raise BtclockClientError(
                     "Something really wrong happened!"

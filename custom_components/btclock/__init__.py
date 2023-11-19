@@ -30,6 +30,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = coordinator = BtclockDataUpdateCoordinator(
         hass=hass,
+        config_entry=entry,
         client=Btclock(
             host=entry.data[CONF_HOST],
             session=async_get_clientsession(hass),

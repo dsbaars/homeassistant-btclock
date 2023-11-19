@@ -5,14 +5,25 @@
             "user": {
                 "description": "Click on the bottom button to see the IP-address on the device",
                 "data": {
-                    "host": "Hostname or IP-address"
+                    "host": "Hostname or IP-address",
+                    "scan_interval": "Update frequency"
+                }
+            },
+            "error": {
+                "auth": "Username/Password is wrong.",
+                "connection": "Unable to connect to the server.",
+                "unknown": "Unknown error occurred."
+            }
+        }
+    },
+    "options": {
+        "step": {
+            "user": {
+                "title": "BTClock options",
+                "data": {
+                    "scan_interval": "Update frequency in seconds"
                 }
             }
-        },
-        "error": {
-            "auth": "Username/Password is wrong.",
-            "connection": "Unable to connect to the server.",
-            "unknown": "Unknown error occurred."
         }
     }
 }
