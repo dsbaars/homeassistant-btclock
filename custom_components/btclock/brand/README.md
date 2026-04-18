@@ -13,7 +13,12 @@ Icon and wordmark for the BTClock Home Assistant integration, set in Ubuntu Medi
 
 ## Use in Home Assistant
 
-Home Assistant pulls integration branding from [home-assistant/brands](https://github.com/home-assistant/brands), **not** from this repo. To show these icons in the HA UI, submit a PR against that repo that creates `custom_integrations/btclock/` containing `icon.png`, `icon@2x.png`, `logo.png`, `logo@2x.png`.
+| HA version       | Source of icons                                                                     |
+|------------------|-------------------------------------------------------------------------------------|
+| 2025.11 – 2026.2 | Only [home-assistant/brands](https://github.com/home-assistant/brands) is consulted — requires a PR there |
+| 2026.3+          | This `brand/` folder is picked up automatically; no external PR required            |
+
+For full coverage across the supported HA range, submit a PR to `home-assistant/brands` that creates `custom_integrations/btclock/` containing `icon.png`, `icon@2x.png`, `logo.png`, `logo@2x.png`.
 
 ## Regenerating from source
 
