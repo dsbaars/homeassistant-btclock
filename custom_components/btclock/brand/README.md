@@ -13,6 +13,8 @@ Icon and wordmark for the BTClock Home Assistant integration, set in Ubuntu Medi
 | `dark_logo.svg`   | 600×200   | Source — same wordmark in Bitcoin orange for dark themes |
 | `dark_logo.png`   | 600×200   | Raster 1× |
 | `dark_logo@2x.png` | 1200×400 | Raster 2× |
+| `dark_icon.png`   | 256×256   | Same design as `icon.png` — the near-black tile already reads well on dark themes, but shipping an explicit copy avoids relying on the brands proxy's fallback chain |
+| `dark_icon@2x.png` | 512×512  | Raster 2× |
 
 ## Use in Home Assistant
 
