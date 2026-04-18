@@ -235,9 +235,15 @@ async def test_install_specific_version_downloads_and_uploads(
 async def test_install_watchdog_clears_in_progress_on_version_bump(
     hass: HomeAssistant, mock_aioresponse, load_fixture
 ) -> None:
-    """Watchdog should flip `in_progress` False once gitTag changes."""
+    """Watchdog should flip `in_progress` False once gitTag changes.
+
+    Mid-install we also simulate an SSE frame arriving with
+    `isOTAUpdating=True` (pre-reboot state). The watchdog must clear that
+    stale flag itself, otherwise `in_progress` would stay `True` until the
+    next fresh SSE frame — which arrives some seconds after reboot.
+    """
     settings = load_fixture("settings_v3_4_revb").copy()
-    settings["gitTag"] = "3.3.18"  # device is "outdated" at setup
+    settings["gitTag"] = "3.3.18"
     entry = await _setup(
         hass,
         mock_aioresponse,
@@ -247,23 +253,29 @@ async def test_install_watchdog_clears_in_progress_on_version_bump(
         compare=load_fixture("compare_318_319"),
     )
 
-    # Post-install: the device reboots into a new tag. First call returns
-    # the pre-reboot settings (simulating "device still at old tag"), every
-    # subsequent call returns the post-reboot settings.
+    # Watchdog simulation:
+    #   poll 1 — device still rebooting: return old settings, and simulate
+    #            an SSE frame that arrived with isOTAUpdating=True
+    #            (last frame before the reboot cut the stream).
+    #   poll 2 — device back online with the new gitTag.
     new_settings = settings.copy()
     new_settings["gitTag"] = "3.3.19"
     call_count = {"n": 0}
 
     async def _fake_load(self: BtclockClient) -> dict:
         call_count["n"] += 1
-        value = settings if call_count["n"] == 1 else new_settings
+        if call_count["n"] == 1:
+            coord = entry.runtime_data
+            coord.async_set_updated_data({**coord.data, "isOTAUpdating": True})
+            value = settings
+        else:
+            value = new_settings
         self._settings = value  # noqa: SLF001
         return value
 
     with (
         patch.object(BtclockClient, "async_auto_update_firmware", new=AsyncMock()),
         patch.object(BtclockClient, "async_load_settings", _fake_load),
-        patch("custom_components.btclock.update._INSTALL_WATCHDOG_GRACE", 0),
         patch("custom_components.btclock.update._INSTALL_WATCHDOG_POLL", 0),
     ):
         await hass.services.async_call(
@@ -279,7 +291,10 @@ async def test_install_watchdog_clears_in_progress_on_version_bump(
     assert state is not None
     assert state.attributes["in_progress"] is False
     assert state.attributes["installed_version"] == "3.3.19"
-    _ = entry
+    # The stale `isOTAUpdating=True` from the pre-reboot SSE frame must have
+    # been cleared, so in_progress doesn't flip back on to True just because
+    # SSE hasn't reconnected yet.
+    assert entry.runtime_data.data.get("isOTAUpdating") is False
 
 
 async def test_install_watchdog_times_out(
@@ -304,7 +319,6 @@ async def test_install_watchdog_times_out(
     with (
         patch.object(BtclockClient, "async_auto_update_firmware", new=AsyncMock()),
         patch.object(BtclockClient, "async_load_settings", _fake_load),
-        patch("custom_components.btclock.update._INSTALL_WATCHDOG_GRACE", 0),
         patch("custom_components.btclock.update._INSTALL_WATCHDOG_POLL", 0),
         patch("custom_components.btclock.update._INSTALL_WATCHDOG_TIMEOUT", 0.05),
     ):

@@ -68,13 +68,11 @@ _UPDATE_CHECK_INTERVAL = timedelta(hours=24)
 _RELEASE_FETCH_TIMEOUT = 15
 _BINARY_FETCH_TIMEOUT = 120
 
-# Post-install watchdog: how long to wait for the device to report a new
-# gitTag before giving up. Upper bound on the "Installing" progress bar.
-_INSTALL_WATCHDOG_TIMEOUT = 600  # 10 min
-# Small grace period after the install trigger so we don't hammer /api/settings
-# while the device is still in its pre-OTA idle state.
-_INSTALL_WATCHDOG_GRACE = 10  # s
-_INSTALL_WATCHDOG_POLL = 10  # s between settings re-reads
+# Post-install watchdog: poll once a minute until the device reports a new
+# gitTag (OTA done and rebooted) or the timeout expires. The progress bar
+# stays up the whole time.
+_INSTALL_WATCHDOG_TIMEOUT = 1200  # 20 min — big OTA on a saturated WiFi
+_INSTALL_WATCHDOG_POLL = 60  # s between settings re-reads
 
 
 def _is_real_version(tag: str | None) -> bool:
@@ -328,51 +326,52 @@ class BtclockUpdate(BtclockEntity, UpdateEntity):
         self.async_write_ha_state()
 
     async def _watch_install(self, old_tag: str | None) -> None:
-        """Poll /api/settings until gitTag changes or the timeout expires.
+        """Poll /api/settings once a minute until gitTag changes or we time out.
 
-        This is more robust than relying on an `isOTAUpdating` True→False
-        transition because (a) the firmware doesn't push a status frame
-        when OTA starts, and (b) SSE disconnects across the reboot so the
-        transition can be missed entirely if the first post-reboot frame
-        has `isOTAUpdating=False`.
+        Polling beats listening to `isOTAUpdating`: the firmware doesn't
+        push a status frame when OTA starts, and SSE drops across the
+        reboot — so a True→False transition can be missed or delayed well
+        past the actual completion.
         """
+        client = self.coordinator.client
         try:
-            # Give the device time to pick up the queued update and start
-            # writing flash before we start hammering /api/settings.
-            await asyncio.sleep(_INSTALL_WATCHDOG_GRACE)
             deadline = self.hass.loop.time() + _INSTALL_WATCHDOG_TIMEOUT
-            client = self.coordinator.client
+            new_tag: str | None = old_tag
             while self.hass.loop.time() < deadline:
+                await asyncio.sleep(_INSTALL_WATCHDOG_POLL)
                 try:
                     settings = await client.async_load_settings()
-                except Exception:  # noqa: BLE001 — device unreachable during reboot
-                    # Absorb any error: the device is often mid-flash/reboot.
-                    await asyncio.sleep(_INSTALL_WATCHDOG_POLL)
+                except Exception as err:  # noqa: BLE001 — mid-reboot is expected
+                    LOGGER.debug("OTA poll: %s unreachable (%s)", client.host, err)
                     continue
-                if settings.get("gitTag") != old_tag:
-                    LOGGER.debug(
-                        "OTA completed on %s: %s → %s",
-                        client.host,
-                        old_tag,
-                        settings.get("gitTag"),
+                new_tag = settings.get("gitTag")
+                if new_tag != old_tag:
+                    LOGGER.info(
+                        "OTA complete on %s: %s → %s", client.host, old_tag, new_tag
                     )
-                    break
-                await asyncio.sleep(_INSTALL_WATCHDOG_POLL)
-            else:
-                LOGGER.warning(
-                    "OTA watchdog timed out on %s (still at %s)",
-                    client.host,
-                    old_tag,
+                    return
+                LOGGER.debug(
+                    "OTA poll: %s still reports gitTag=%s", client.host, new_tag
                 )
+            LOGGER.warning(
+                "OTA watchdog timed out on %s (still at %s after %d s)",
+                client.host,
+                old_tag,
+                _INSTALL_WATCHDOG_TIMEOUT,
+            )
         except asyncio.CancelledError:
             raise
         finally:
-            # Clear the handle *before* writing state, so `in_progress`
-            # observes the task as finished (the property inspects
-            # `_install_task is not None and not _install_task.done()`,
-            # but the task is still technically running from inside its
-            # own finally).
+            # Clear the task handle *before* writing state, so `in_progress`
+            # observes the install as finished (the property inspects
+            # `_install_task is not None and not _install_task.done()`, and
+            # the task is still running from inside its own finally).
             self._install_task = None
+            # SSE likely dropped across the reboot — the last cached status
+            # still shows `isOTAUpdating=True`. Clear it optimistically so
+            # the progress bar doesn't linger until the next fresh frame.
+            if (self.coordinator.data or {}).get("isOTAUpdating"):
+                self.coordinator.async_apply_optimistic({"isOTAUpdating": False})
             self.async_write_ha_state()
             # Installed version likely changed → re-evaluate "update available".
             await self._release.async_request_refresh()
