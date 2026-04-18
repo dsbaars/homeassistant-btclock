@@ -9,11 +9,27 @@ import voluptuous as vol
 from homeassistant.config_entries import (
     SOURCE_REAUTH,
     SOURCE_RECONFIGURE,
+    ConfigEntry,
     ConfigFlow,
     ConfigFlowResult,
+    OptionsFlow,
 )
-from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME
+from homeassistant.const import (
+    CONF_HOST,
+    CONF_PASSWORD,
+    CONF_SCAN_INTERVAL,
+    CONF_USERNAME,
+)
+from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
+from homeassistant.helpers.selector import (
+    NumberSelector,
+    NumberSelectorConfig,
+    SelectOptionDict,
+    SelectSelector,
+    SelectSelectorConfig,
+    SelectSelectorMode,
+)
 from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 
 from .api import (
@@ -22,7 +38,22 @@ from .api import (
     BtclockCommunicationError,
     BtclockError,
 )
-from .const import DOMAIN, LOGGER
+from .const import (
+    CONF_UPDATE_MODE,
+    DEFAULT_SCAN_INTERVAL,
+    DEFAULT_UPDATE_MODE,
+    DOMAIN,
+    LOGGER,
+    MAX_SCAN_INTERVAL,
+    MIN_SCAN_INTERVAL,
+    UPDATE_MODE_EVENTS,
+    UPDATE_MODE_POLLING,
+)
+
+_UPDATE_MODE_OPTIONS = [
+    SelectOptionDict(value=UPDATE_MODE_EVENTS, label="Server-Sent Events (push)"),
+    SelectOptionDict(value=UPDATE_MODE_POLLING, label="Polling"),
+]
 
 
 def _user_schema(defaults: Mapping[str, Any] | None = None) -> vol.Schema:
@@ -46,6 +77,34 @@ def _credentials_schema(defaults: Mapping[str, Any] | None = None) -> vol.Schema
     )
 
 
+def _options_schema(defaults: Mapping[str, Any] | None = None) -> vol.Schema:
+    defaults = defaults or {}
+    return vol.Schema(
+        {
+            vol.Required(
+                CONF_UPDATE_MODE,
+                default=defaults.get(CONF_UPDATE_MODE, DEFAULT_UPDATE_MODE),
+            ): SelectSelector(
+                SelectSelectorConfig(
+                    options=_UPDATE_MODE_OPTIONS,
+                    mode=SelectSelectorMode.LIST,
+                )
+            ),
+            vol.Required(
+                CONF_SCAN_INTERVAL,
+                default=defaults.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
+            ): NumberSelector(
+                NumberSelectorConfig(
+                    min=MIN_SCAN_INTERVAL,
+                    max=MAX_SCAN_INTERVAL,
+                    step=1,
+                    unit_of_measurement="s",
+                )
+            ),
+        }
+    )
+
+
 class BtclockConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle BTClock config, reauth, and reconfigure flows."""
 
@@ -56,6 +115,11 @@ class BtclockConfigFlow(ConfigFlow, domain=DOMAIN):
         self._username: str | None = None
         self._password: str | None = None
         self._hostname: str | None = None  # from /api/settings
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry: ConfigEntry) -> BtclockOptionsFlow:
+        return BtclockOptionsFlow()
 
     # ---- user / zeroconf entry points --------------------------------------
 
@@ -73,7 +137,7 @@ class BtclockConfigFlow(ConfigFlow, domain=DOMAIN):
             elif result == "unknown":
                 errors["base"] = "unknown"
             else:
-                return await self._finish_create()
+                return await self.async_step_update_mode()
 
         return self.async_show_form(
             step_id="user",
@@ -107,7 +171,7 @@ class BtclockConfigFlow(ConfigFlow, domain=DOMAIN):
             return await self.async_step_credentials()
         if result in ("connection", "unknown"):
             return self.async_abort(reason="cannot_connect")
-        return await self._finish_create()
+        return await self.async_step_update_mode()
 
     # ---- credentials step (used by user + zeroconf) ------------------------
 
@@ -126,7 +190,7 @@ class BtclockConfigFlow(ConfigFlow, domain=DOMAIN):
             elif result == "unknown":
                 errors["base"] = "unknown"
             else:
-                return await self._finish_create()
+                return await self.async_step_update_mode()
 
         return self.async_show_form(
             step_id="credentials",
@@ -134,6 +198,20 @@ class BtclockConfigFlow(ConfigFlow, domain=DOMAIN):
                 {CONF_USERNAME: self._username} if self._username else None
             ),
             errors=errors,
+        )
+
+    # ---- update mode step --------------------------------------------------
+
+    async def async_step_update_mode(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Let the user pick events vs polling, and the scan interval."""
+        if user_input is not None:
+            return await self._finish_create(user_input)
+
+        return self.async_show_form(
+            step_id="update_mode",
+            data_schema=_options_schema(),
         )
 
     # ---- reauth ------------------------------------------------------------
@@ -230,12 +308,10 @@ class BtclockConfigFlow(ConfigFlow, domain=DOMAIN):
         self._hostname = settings.get("hostname") or self._hostname
         return "ok"
 
-    async def _finish_create(self) -> ConfigFlowResult:
-        """Shared happy-path: set unique_id + create the entry."""
+    async def _finish_create(self, options_input: dict[str, Any]) -> ConfigFlowResult:
+        """Shared happy-path: set unique_id + create the entry with options."""
         assert self._host is not None
         unique_id = self._hostname or self._host
-        # For user flow we haven't set unique_id yet; for zeroconf it's already set
-        # but calling again with raise_on_progress=False is fine.
         if self.source not in (SOURCE_REAUTH, SOURCE_RECONFIGURE):
             await self.async_set_unique_id(unique_id, raise_on_progress=False)
             self._abort_if_unique_id_configured(updates={CONF_HOST: self._host})
@@ -244,4 +320,30 @@ class BtclockConfigFlow(ConfigFlow, domain=DOMAIN):
         if self._username is not None:
             data[CONF_USERNAME] = self._username
             data[CONF_PASSWORD] = self._password
-        return self.async_create_entry(title=unique_id, data=data)
+
+        options = {
+            CONF_UPDATE_MODE: options_input[CONF_UPDATE_MODE],
+            CONF_SCAN_INTERVAL: int(options_input[CONF_SCAN_INTERVAL]),
+        }
+        return self.async_create_entry(title=unique_id, data=data, options=options)
+
+
+class BtclockOptionsFlow(OptionsFlow):
+    """Let users change update mode / scan interval after install."""
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        if user_input is not None:
+            return self.async_create_entry(
+                title="",
+                data={
+                    CONF_UPDATE_MODE: user_input[CONF_UPDATE_MODE],
+                    CONF_SCAN_INTERVAL: int(user_input[CONF_SCAN_INTERVAL]),
+                },
+            )
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=_options_schema(self.config_entry.options),
+        )

@@ -54,16 +54,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: BtclockConfigEntry) -> b
     entry.runtime_data = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-    await coordinator.async_start_push()
+    await coordinator.async_start()
 
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: BtclockConfigEntry) -> bool:
-    """Unload a config entry — stop the SSE task and tear down platforms."""
+    """Unload a config entry — stop the update machinery and tear down platforms."""
     coordinator = entry.runtime_data
-    await coordinator.async_stop_push()
+    await coordinator.async_stop()
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
 

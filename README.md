@@ -33,7 +33,10 @@ The variant is detected automatically from `GET /api/settings`.
 
 ## Live updates
 
-When the firmware exposes `/events`, the integration subscribes to the SSE stream and updates entities on push. If the stream drops, it falls back to polling `/api/status` until SSE recovers.
+During setup you pick one of two strategies; swap later via **Settings → Devices & Services → BTClock → Configure**.
+
+- **Server-Sent Events (default)** — the integration subscribes to the BTClock's `/events` stream and receives status pushes the moment they happen. Lowest latency, zero polling traffic. The SSE client auto-reconnects with jittered backoff if the connection drops.
+- **Polling** — plain periodic `GET /api/status`. Choose this if SSE is unreliable on your network (e.g. through a flaky reverse proxy or VPN). The scan interval is configurable (5 – 3600 seconds, default 30).
 
 ## HTTP Basic Auth
 

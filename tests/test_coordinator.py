@@ -1,15 +1,20 @@
-"""Coordinator behaviour — SSE push forwards to entities."""
+"""Coordinator behaviour — both update modes."""
 
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from homeassistant.const import CONF_HOST
+from homeassistant.const import CONF_HOST, CONF_SCAN_INTERVAL
 from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.btclock.const import DOMAIN
+from custom_components.btclock.const import (
+    CONF_UPDATE_MODE,
+    DOMAIN,
+    UPDATE_MODE_EVENTS,
+    UPDATE_MODE_POLLING,
+)
 from custom_components.btclock.coordinator import BtclockCoordinator
 from custom_components.btclock.models import ApiVariant
 
@@ -23,15 +28,20 @@ def _make_mock_client(settings: dict) -> MagicMock:
     return client
 
 
-@pytest.fixture
-def config_entry(hass: HomeAssistant) -> MockConfigEntry:
+def _entry(hass: HomeAssistant, options: dict | None = None) -> MockConfigEntry:
     entry = MockConfigEntry(
         domain=DOMAIN,
         unique_id="btclock-test",
         data={CONF_HOST: "btclock-test.local"},
+        options=options or {},
     )
     entry.add_to_hass(hass)
     return entry
+
+
+@pytest.fixture
+def config_entry(hass: HomeAssistant) -> MockConfigEntry:
+    return _entry(hass)
 
 
 async def test_sse_status_frame_updates_coordinator_data(
@@ -44,10 +54,36 @@ async def test_sse_status_frame_updates_coordinator_data(
     await coord._on_status_frame(status_frame)  # noqa: SLF001
 
     assert coord.data == status_frame
-    assert coord.data["currentScreen"] == status_frame["currentScreen"]
 
 
-async def test_poll_heartbeat_calls_update_status(
+async def test_events_mode_leaves_update_interval_none(
+    hass: HomeAssistant, load_fixture
+) -> None:
+    entry = _entry(hass, {CONF_UPDATE_MODE: UPDATE_MODE_EVENTS, CONF_SCAN_INTERVAL: 30})
+    client = _make_mock_client(load_fixture("settings_v3_4_revb"))
+
+    coord = BtclockCoordinator(hass, entry, client)
+
+    assert coord.update_mode == UPDATE_MODE_EVENTS
+    assert coord.update_interval is None
+
+
+async def test_polling_mode_sets_update_interval(
+    hass: HomeAssistant, load_fixture
+) -> None:
+    entry = _entry(
+        hass, {CONF_UPDATE_MODE: UPDATE_MODE_POLLING, CONF_SCAN_INTERVAL: 15}
+    )
+    client = _make_mock_client(load_fixture("settings_v3_4_revb"))
+
+    coord = BtclockCoordinator(hass, entry, client)
+
+    assert coord.update_mode == UPDATE_MODE_POLLING
+    assert coord.update_interval is not None
+    assert coord.update_interval.total_seconds() == 15
+
+
+async def test_polling_mode_uses_status_endpoint(
     hass: HomeAssistant, config_entry: MockConfigEntry, load_fixture
 ) -> None:
     client = _make_mock_client(load_fixture("settings_v3_4_revb"))

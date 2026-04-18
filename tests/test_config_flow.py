@@ -1,4 +1,4 @@
-"""Config flow tests — happy path, auth required, reauth, zeroconf, reconfigure."""
+"""Config flow tests — happy path, auth required, reauth, zeroconf, reconfigure, options."""
 
 from __future__ import annotations
 
@@ -6,35 +6,69 @@ from ipaddress import ip_address
 from unittest.mock import patch
 
 from homeassistant.config_entries import SOURCE_USER
-from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
-from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME
+from homeassistant.const import (
+    CONF_HOST,
+    CONF_PASSWORD,
+    CONF_SCAN_INTERVAL,
+    CONF_USERNAME,
+)
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.btclock.api import BtclockAuthError, BtclockCommunicationError
-from custom_components.btclock.const import DOMAIN
+from custom_components.btclock.const import (
+    CONF_UPDATE_MODE,
+    DOMAIN,
+    UPDATE_MODE_EVENTS,
+    UPDATE_MODE_POLLING,
+)
 
 _TARGET = "custom_components.btclock.config_flow.BtclockClient"
+_DEFAULT_UPDATE_CHOICE = {CONF_UPDATE_MODE: UPDATE_MODE_EVENTS, CONF_SCAN_INTERVAL: 30}
 
 
-async def _start_user_flow(hass: HomeAssistant, settings: dict) -> dict:
+async def _advance_to_update_mode(
+    hass: HomeAssistant, settings: dict, host: str = "btclock-9d5530.local"
+) -> dict:
     with patch(f"{_TARGET}.async_load_settings", return_value=settings):
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": SOURCE_USER}
         )
         return await hass.config_entries.flow.async_configure(
-            result["flow_id"], {CONF_HOST: "btclock-9d5530.local"}
+            result["flow_id"], {CONF_HOST: host}
         )
 
 
 async def test_user_happy_path(hass: HomeAssistant, load_fixture) -> None:
     settings = load_fixture("settings_v3_4_revb")
-    result = await _start_user_flow(hass, settings)
+    result = await _advance_to_update_mode(hass, settings)
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "update_mode"
 
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], _DEFAULT_UPDATE_CHOICE
+    )
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"] == {CONF_HOST: "btclock-9d5530.local"}
+    assert result["options"] == _DEFAULT_UPDATE_CHOICE
     assert result["title"] == settings["hostname"]
+
+
+async def test_user_flow_polling_mode(hass: HomeAssistant, load_fixture) -> None:
+    settings = load_fixture("settings_v3_4_revb")
+    result = await _advance_to_update_mode(hass, settings)
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {CONF_UPDATE_MODE: UPDATE_MODE_POLLING, CONF_SCAN_INTERVAL: 15},
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["options"] == {
+        CONF_UPDATE_MODE: UPDATE_MODE_POLLING,
+        CONF_SCAN_INTERVAL: 15,
+    }
 
 
 async def test_user_flow_auth_required_then_ok(
@@ -57,6 +91,12 @@ async def test_user_flow_auth_required_then_ok(
             result["flow_id"],
             {CONF_USERNAME: "btclock", CONF_PASSWORD: "hunter2"},
         )
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "update_mode"
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], _DEFAULT_UPDATE_CHOICE
+    )
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"][CONF_USERNAME] == "btclock"
     assert result["data"][CONF_PASSWORD] == "hunter2"
@@ -100,6 +140,12 @@ async def test_zeroconf_discovery_then_confirm(
         return_value=load_fixture("settings_v3_4_revb"),
     ):
         result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "update_mode"
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], _DEFAULT_UPDATE_CHOICE
+    )
     assert result["type"] is FlowResultType.CREATE_ENTRY
 
 
@@ -173,3 +219,25 @@ async def test_reconfigure_host_change(hass: HomeAssistant, load_fixture) -> Non
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "reconfigure_successful"
     assert entry.data[CONF_HOST] == "btclock-9d5530.local"
+
+
+async def test_options_flow_changes_update_mode(hass: HomeAssistant) -> None:
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="btclock-9d5530",
+        data={CONF_HOST: "btclock-9d5530.local"},
+        options={CONF_UPDATE_MODE: UPDATE_MODE_EVENTS, CONF_SCAN_INTERVAL: 30},
+    )
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "init"
+
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {CONF_UPDATE_MODE: UPDATE_MODE_POLLING, CONF_SCAN_INTERVAL: 60},
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert entry.options[CONF_UPDATE_MODE] == UPDATE_MODE_POLLING
+    assert entry.options[CONF_SCAN_INTERVAL] == 60

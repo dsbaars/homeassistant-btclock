@@ -33,7 +33,7 @@ async def _setup(hass: HomeAssistant, settings: dict, status: dict) -> str:
             BtclockClient, "async_update_status", new=AsyncMock(return_value=status)
         ),
         patch(
-            "custom_components.btclock.coordinator.BtclockCoordinator.async_start_push",
+            "custom_components.btclock.coordinator.BtclockCoordinator.async_start",
             new=AsyncMock(),
         ),
     ):
@@ -153,6 +153,9 @@ async def test_settings_switch_toggle_calls_patch(
         ) as patch_mock,
         patch.object(
             BtclockClient, "async_load_settings", new=AsyncMock(return_value=settings)
+        ),
+        patch.object(
+            BtclockClient, "async_update_status", new=AsyncMock(return_value={})
         ),
     ):
         await hass.services.async_call(

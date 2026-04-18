@@ -33,7 +33,7 @@ async def _setup(hass: HomeAssistant, settings: dict, status: dict) -> str:
             BtclockClient, "async_update_status", new=AsyncMock(return_value=status)
         ),
         patch(
-            "custom_components.btclock.coordinator.BtclockCoordinator.async_start_push",
+            "custom_components.btclock.coordinator.BtclockCoordinator.async_start",
             new=AsyncMock(),
         ),
     ):

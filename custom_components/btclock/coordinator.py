@@ -1,10 +1,15 @@
-"""Data coordinator for BTClock — SSE push with polling fallback.
+"""Data coordinator for BTClock.
 
-The coordinator attaches to the device's `/events` SSE stream and forwards
-`status` frames to entities via `async_set_updated_data`. If the SSE stream
-fails repeatedly (e.g. legacy firmware that misbehaves, network flake), it
-falls back to `/api/status` polling at `DEFAULT_SCAN_INTERVAL`. A slow poll
-heartbeat runs alongside SSE anyway so stale data is caught.
+Two modes, chosen by the user in the config flow:
+
+- **events**: subscribe to the device's `/events` SSE stream. Entities update
+  on push; `update_interval` is `None` so the coordinator never polls. The
+  SSE client auto-reconnects with jittered backoff on transient failures.
+
+- **polling**: plain `/api/status` polling at the configured interval. No SSE.
+
+Whichever mode is active, a settings PATCH is still followed by an explicit
+refresh so settings-derived entities see the new value immediately.
 """
 
 from __future__ import annotations
@@ -14,16 +19,20 @@ import contextlib
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
+from homeassistant.const import CONF_SCAN_INTERVAL
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import BtclockAuthError, BtclockClient, BtclockCommunicationError
 from .const import (
+    CONF_UPDATE_MODE,
     DEFAULT_SCAN_INTERVAL,
+    DEFAULT_UPDATE_MODE,
     DOMAIN,
     LOGGER,
-    SSE_FAILURE_THRESHOLD,
+    UPDATE_MODE_EVENTS,
+    UPDATE_MODE_POLLING,
 )
 from .models import Status
 from .sse import BtclockEventStream
@@ -43,33 +52,54 @@ class BtclockCoordinator(DataUpdateCoordinator[Status]):
         config_entry: ConfigEntry,
         client: BtclockClient,
     ) -> None:
+        mode = config_entry.options.get(CONF_UPDATE_MODE, DEFAULT_UPDATE_MODE)
+        scan_interval = int(
+            config_entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+        )
+        update_interval = (
+            timedelta(seconds=scan_interval) if mode == UPDATE_MODE_POLLING else None
+        )
         super().__init__(
             hass=hass,
             logger=LOGGER,
             name=f"{DOMAIN}:{client.host}",
             config_entry=config_entry,
-            update_interval=timedelta(seconds=DEFAULT_SCAN_INTERVAL),
+            update_interval=update_interval,
         )
         self.client = client
+        self._mode = mode
         self._stream: BtclockEventStream | None = None
         self._stream_task: asyncio.Task[None] | None = None
 
-    # ---- Push setup --------------------------------------------------------
+    @property
+    def update_mode(self) -> str:
+        return self._mode
 
-    async def async_start_push(self) -> None:
-        """Open the SSE stream. Safe to call once per config-entry setup."""
+    # ---- Lifecycle ---------------------------------------------------------
+
+    async def async_start(self) -> None:
+        """Kick off whichever update mechanism the user chose."""
+        if self._mode == UPDATE_MODE_EVENTS:
+            await self._start_push()
+        # Polling mode needs no setup — DataUpdateCoordinator handles it.
+
+    async def async_stop(self) -> None:
+        await self._stop_push()
+
+    # ---- SSE push ----------------------------------------------------------
+
+    async def _start_push(self) -> None:
         if self._stream is not None:
             return
         self._stream = BtclockEventStream(
             self.client,
             on_status=self._on_status_frame,
-            on_disconnect=self._on_sse_disconnect,
         )
         self._stream_task = self.config_entry.async_create_background_task(
             self.hass, self._stream.run(), name=f"{self.name}-sse"
         )
 
-    async def async_stop_push(self) -> None:
+    async def _stop_push(self) -> None:
         if self._stream is not None:
             await self._stream.stop()
         if self._stream_task is not None:
@@ -83,38 +113,34 @@ class BtclockCoordinator(DataUpdateCoordinator[Status]):
         """SSE delivered a new status — publish it to entities."""
         self.async_set_updated_data(payload)
 
-    async def _on_sse_disconnect(self, err: BaseException | None) -> None:
-        if (
-            self._stream is not None
-            and self._stream.consecutive_failures >= SSE_FAILURE_THRESHOLD
-        ):
-            LOGGER.info(
-                "SSE stream to %s has failed %d times; relying on polling heartbeat",
-                self.client.host,
-                self._stream.consecutive_failures,
-            )
-
     # ---- Settings patch + reload ------------------------------------------
 
     async def async_patch_settings(self, patch: dict) -> None:
         """Apply a partial settings update and reload cached settings.
 
         Entities that read from `client.settings` (Nostr switches, Nostr relay
-        sensor, etc.) pick up the change on the next state read — triggered by
-        the status refresh we request at the end.
+        sensor, etc.) pick up the change on the next state read.
         """
         try:
             await self.client.async_patch_settings(patch)
             await self.client.async_load_settings()
         except BtclockAuthError as err:
             raise ConfigEntryAuthFailed(str(err)) from err
-        # Nudge entities so any status-derived state updates too.
-        await self.async_request_refresh()
+        # In events mode, nothing polls — fetch status once so attribute-backed
+        # entities (e.g. frontlight brightness) refresh immediately.
+        if self._mode == UPDATE_MODE_EVENTS:
+            try:
+                data = await self.client.async_update_status()
+                self.async_set_updated_data(data)
+            except BtclockCommunicationError:
+                pass
+        else:
+            await self.async_request_refresh()
 
-    # ---- Poll heartbeat ----------------------------------------------------
+    # ---- Poll-mode implementation -----------------------------------------
 
     async def _async_update_data(self) -> Status:
-        """Poll fallback — also acts as a heartbeat alongside SSE."""
+        """Only called in polling mode (update_interval is None otherwise)."""
         try:
             return await self.client.async_update_status()
         except BtclockAuthError as err:
