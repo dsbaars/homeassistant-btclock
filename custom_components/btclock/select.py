@@ -60,8 +60,9 @@ class BtclockScreenSelect(BtclockEntity, SelectEntity):
     async def async_select_option(self, option: str) -> None:
         for s in self._screens():
             if s.get("name") == option:
-                await self.coordinator.client.async_set_screen(int(s["id"]))
-                await self.coordinator.async_request_refresh()
+                screen_id = int(s["id"])
+                await self.coordinator.client.async_set_screen(screen_id)
+                self.coordinator.async_apply_optimistic({"currentScreen": screen_id})
                 return
 
 
@@ -83,4 +84,4 @@ class BtclockCurrencySelect(BtclockEntity, SelectEntity):
 
     async def async_select_option(self, option: str) -> None:
         await self.coordinator.client.async_set_currency(option)
-        await self.coordinator.async_request_refresh()
+        self.coordinator.async_apply_optimistic({"currency": option})

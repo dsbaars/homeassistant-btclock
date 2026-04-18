@@ -113,29 +113,52 @@ class BtclockCoordinator(DataUpdateCoordinator[Status]):
         """SSE delivered a new status — publish it to entities."""
         self.async_set_updated_data(payload)
 
+    # ---- Optimistic updates ------------------------------------------------
+
+    def async_apply_optimistic(self, patch: dict) -> None:
+        """Merge a partial status dict into coordinator.data and notify entities.
+
+        Used by control entities (lights, switches, selects) to give immediate
+        UI feedback after a successful write, without waiting for SSE or a
+        poll to round-trip. The next authoritative update (SSE frame or scan)
+        will supersede this view.
+        """
+        merged: Status = {**(self.data or {}), **patch}
+        self.async_set_updated_data(merged)
+
     # ---- Settings patch + reload ------------------------------------------
 
     async def async_patch_settings(self, patch: dict) -> None:
-        """Apply a partial settings update and reload cached settings.
+        """Apply a partial settings update optimistically and reload on success.
 
-        Entities that read from `client.settings` (Nostr switches, Nostr relay
-        sensor, etc.) pick up the change on the next state read.
+        The cached `client.settings` dict is mutated with `patch` *before* the
+        HTTP call so dependent entities (Nostr switches, relay sensor, …)
+        repaint instantly. After the PATCH returns, we reload settings from
+        the device to reconcile with whatever the firmware actually accepted.
+        On failure we revert to the last known server-side settings.
         """
+        original = dict(self.client.settings or {})
+        # Optimistically mutate the cached settings + notify listeners.
+        self.client._settings = {**original, **patch}  # noqa: SLF001
+        self.async_update_listeners()
+
         try:
             await self.client.async_patch_settings(patch)
-            await self.client.async_load_settings()
         except BtclockAuthError as err:
+            self.client._settings = original  # noqa: SLF001
+            self.async_update_listeners()
             raise ConfigEntryAuthFailed(str(err)) from err
-        # In events mode, nothing polls — fetch status once so attribute-backed
-        # entities (e.g. frontlight brightness) refresh immediately.
-        if self._mode == UPDATE_MODE_EVENTS:
-            try:
-                data = await self.client.async_update_status()
-                self.async_set_updated_data(data)
-            except BtclockCommunicationError:
-                pass
-        else:
-            await self.async_request_refresh()
+        except BtclockCommunicationError:
+            self.client._settings = original  # noqa: SLF001
+            self.async_update_listeners()
+            raise
+
+        # Reconcile — pull authoritative settings back from the device.
+        # Keep the optimistic state if the reload fails; next successful
+        # load will resync.
+        with contextlib.suppress(BtclockCommunicationError):
+            await self.client.async_load_settings()
+        self.async_update_listeners()
 
     # ---- Poll-mode implementation -----------------------------------------
 

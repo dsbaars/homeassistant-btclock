@@ -48,11 +48,11 @@ class BtclockTimerSwitch(BtclockEntity, SwitchEntity):
 
     async def async_turn_on(self, **_: Any) -> None:
         await self.coordinator.client.async_timer_start()
-        await self.coordinator.async_request_refresh()
+        self.coordinator.async_apply_optimistic({"timerRunning": True})
 
     async def async_turn_off(self, **_: Any) -> None:
         await self.coordinator.client.async_timer_stop()
-        await self.coordinator.async_request_refresh()
+        self.coordinator.async_apply_optimistic({"timerRunning": False})
 
 
 class BtclockDndSwitch(BtclockEntity, SwitchEntity):
@@ -70,11 +70,15 @@ class BtclockDndSwitch(BtclockEntity, SwitchEntity):
 
     async def async_turn_on(self, **_: Any) -> None:
         await self.coordinator.client.async_dnd_enable()
-        await self.coordinator.async_request_refresh()
+        dnd = dict(self.coordinator.data.get("dnd") or {})
+        dnd["enabled"] = True
+        self.coordinator.async_apply_optimistic({"dnd": dnd})
 
     async def async_turn_off(self, **_: Any) -> None:
         await self.coordinator.client.async_dnd_disable()
-        await self.coordinator.async_request_refresh()
+        dnd = dict(self.coordinator.data.get("dnd") or {})
+        dnd["enabled"] = False
+        self.coordinator.async_apply_optimistic({"dnd": dnd})
 
 
 @dataclass(frozen=True, kw_only=True)

@@ -87,10 +87,22 @@ class BtclockLed(BtclockEntity, LightEntity):
         if self._index >= len(leds):
             return
         hex_code = "#{:02X}{:02X}{:02X}".format(*rgb)
-        new_leds: list[LedDict] = [{"hex": led.get("hex", _OFF_HEX)} for led in leds]
-        new_leds[self._index] = {"hex": hex_code}
-        await self.coordinator.client.async_set_lights(new_leds)
-        await self.coordinator.async_request_refresh()
+        # Body we POST — `hex` keys only, per the swagger.
+        payload: list[LedDict] = [{"hex": led.get("hex", _OFF_HEX)} for led in leds]
+        payload[self._index] = {"hex": hex_code}
+        await self.coordinator.client.async_set_lights(payload)
+        # Optimistically update the cached state so the UI reflects the click
+        # without waiting for an SSE/poll round-trip. Any drift (e.g. firmware
+        # overwriting the LED for its own reasons) is corrected on the next
+        # authoritative frame.
+        optimistic = [dict(led) for led in leds]
+        optimistic[self._index] = {
+            "hex": hex_code,
+            "red": rgb[0],
+            "green": rgb[1],
+            "blue": rgb[2],
+        }
+        self.coordinator.async_apply_optimistic({"leds": optimistic})
 
 
 class BtclockFrontlight(BtclockEntity, LightEntity):
@@ -130,12 +142,19 @@ class BtclockFrontlight(BtclockEntity, LightEntity):
     async def async_turn_on(self, **kwargs: Any) -> None:
         client = self.coordinator.client
         brightness = kwargs.get(ATTR_BRIGHTNESS)
+        raw = (
+            int(round(brightness / 255 * self._max_raw))
+            if brightness is not None
+            else self._max_raw
+        )
         if brightness is not None:
-            raw = int(round(brightness / 255 * self._max_raw))
             await client.async_frontlight_brightness(raw)
         await client.async_frontlight_on()
-        await self.coordinator.async_request_refresh()
+        # Optimistic update — mirror raw values across all displays.
+        fl_len = len(self.coordinator.data.get("flStatus") or [])
+        self.coordinator.async_apply_optimistic({"flStatus": [raw] * max(fl_len, 1)})
 
     async def async_turn_off(self, **_: Any) -> None:
         await self.coordinator.client.async_frontlight_off()
-        await self.coordinator.async_request_refresh()
+        fl_len = len(self.coordinator.data.get("flStatus") or [])
+        self.coordinator.async_apply_optimistic({"flStatus": [0] * max(fl_len, 1)})
