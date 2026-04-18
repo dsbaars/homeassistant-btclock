@@ -1,14 +1,14 @@
 # Brand assets
 
-Icon and wordmark for the BTClock Home Assistant integration, set in Ubuntu Medium Italic with Bitcoin orange (`#F7931A`).
+Icon and wordmark for the BTClock Home Assistant integration, set in Ubuntu Medium Italic.
 
-| Asset | Size | Purpose |
+| Asset | Size | Description |
 |---|---|---|
-| `icon.svg`   | 256×256 | Source — "BT" monogram on orange rounded tile |
-| `icon.png`   | 256×256 | Raster 1× |
-| `icon@2x.png` | 512×512 | Raster 2× |
-| `logo.svg`   | 600×200 | Source wordmark — "BT" orange, "Clock" dark |
-| `logo.png`   | 600×200 | Raster 1× |
+| `icon.svg`   | 256×256   | Source — "BTClock" in Bitcoin orange (`#F7931A`) on a near-black rounded tile (`#111111`) |
+| `icon.png`   | 256×256   | Raster 1× |
+| `icon@2x.png` | 512×512  | Raster 2× |
+| `logo.svg`   | 600×200   | Source wordmark — "BTClock" in near-black (`#111111`) on transparent |
+| `logo.png`   | 600×200   | Raster 1× |
 | `logo@2x.png` | 1200×400 | Raster 2× |
 
 ## Use in Home Assistant
