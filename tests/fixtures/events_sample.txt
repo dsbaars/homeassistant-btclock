@@ -1,0 +1,9 @@
+event: welcome
+data: 12345
+
+event: status
+data: {"currentScreen":0,"numScreens":7,"timerRunning":true,"espUptime":100,"espFreeHeap":180000,"espHeapSize":327680,"connectionStatus":{"price":true,"blocks":true,"V2":false,"nostr":false},"rssi":-48,"currency":"USD","data":["8","9","6","1","2","3","4"],"leds":[{"hex":"#000000","red":0,"green":0,"blue":0},{"hex":"#000000","red":0,"green":0,"blue":0},{"hex":"#000000","red":0,"green":0,"blue":0},{"hex":"#000000","red":0,"green":0,"blue":0}],"dnd":{"enabled":false,"dndTimeEnabled":false,"startTime":"22:30","endTime":"07:00","active":false}}
+
+event: status
+data: {"currentScreen":3,"numScreens":7,"timerRunning":true,"espUptime":105,"espFreeHeap":180000,"espHeapSize":327680,"connectionStatus":{"price":true,"blocks":true,"V2":false,"nostr":false},"rssi":-48,"currency":"USD","data":["","","","T","I","M","E"],"leds":[{"hex":"#000000","red":0,"green":0,"blue":0},{"hex":"#000000","red":0,"green":0,"blue":0},{"hex":"#000000","red":0,"green":0,"blue":0},{"hex":"#000000","red":0,"green":0,"blue":0}],"dnd":{"enabled":false,"dndTimeEnabled":false,"startTime":"22:30","endTime":"07:00","active":false}}
+

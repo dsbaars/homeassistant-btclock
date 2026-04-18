@@ -1,4 +1,4 @@
-name: "Lint"
+name: "Test"
 
 on:
   push:
@@ -9,8 +9,8 @@ on:
       - "main"
 
 jobs:
-  ruff:
-    name: "Ruff"
+  pytest:
+    name: "Pytest"
     runs-on: "ubuntu-latest"
     steps:
       - name: "Checkout the repository"
@@ -23,10 +23,7 @@ jobs:
           cache: "pip"
 
       - name: "Install requirements"
-        run: python3 -m pip install -r requirements.txt
+        run: python3 -m pip install -r requirements_test.txt
 
-      - name: "Run ruff check"
-        run: python3 -m ruff check custom_components tests
-
-      - name: "Run ruff format --check"
-        run: python3 -m ruff format --check custom_components tests
+      - name: "Run pytest"
+        run: python3 -m pytest tests/ -v

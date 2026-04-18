@@ -1,0 +1,31 @@
+{
+  "currentScreen": 0,
+  "numScreens": 7,
+  "timerRunning": false,
+  "isOTAUpdating": false,
+  "espUptime": 80000,
+  "espFreeHeap": 180000,
+  "espHeapSize": 327680,
+  "connectionStatus": {
+    "price": true,
+    "blocks": true,
+    "V2": false,
+    "nostr": false
+  },
+  "rssi": -50,
+  "currency": "USD",
+  "data": ["", "", "", "", "", "", ""],
+  "leds": [
+    { "hex": "#000000", "red": 0, "green": 0, "blue": 0 },
+    { "hex": "#000000", "red": 0, "green": 0, "blue": 0 },
+    { "hex": "#000000", "red": 0, "green": 0, "blue": 0 },
+    { "hex": "#000000", "red": 0, "green": 0, "blue": 0 }
+  ],
+  "dnd": {
+    "enabled": true,
+    "dndTimeEnabled": true,
+    "startTime": "22:30",
+    "endTime": "07:00",
+    "active": true
+  }
+}

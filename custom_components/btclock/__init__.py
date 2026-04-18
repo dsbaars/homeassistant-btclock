@@ -1,60 +1,74 @@
-"""Custom integration to integrate btclock with Home Assistant.
+"""BTClock integration for Home Assistant."""
 
-For more details about this integration, please refer to
-https://github.com/ludeeus/btclock
-"""
 from __future__ import annotations
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_HOST, Platform
+from homeassistant.const import (
+    CONF_HOST,
+    CONF_PASSWORD,
+    CONF_USERNAME,
+    Platform,
+)
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-# from .api import BtclockApiClient
-from .btclock import Btclock
-from .const import DOMAIN
-from .coordinator import BtclockDataUpdateCoordinator
+from .api import (
+    BtclockAuthError,
+    BtclockClient,
+    BtclockCommunicationError,
+)
+from .coordinator import BtclockCoordinator
 
 PLATFORMS: list[Platform] = [
-    Platform.SENSOR,
     Platform.BINARY_SENSOR,
-    Platform.SWITCH,
+    Platform.BUTTON,
     Platform.LIGHT,
-    Platform.SELECT
+    Platform.SELECT,
+    Platform.SENSOR,
+    Platform.SWITCH,
 ]
 
+type BtclockConfigEntry = ConfigEntry[BtclockCoordinator]
 
-# https://developers.home-assistant.io/docs/config_entries_index/#setting-up-an-entry
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up this integration using UI."""
-    hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = coordinator = BtclockDataUpdateCoordinator(
-        hass=hass,
-        config_entry=entry,
-        client=Btclock(
-            host=entry.data[CONF_HOST],
-            session=async_get_clientsession(hass),
-        ),
+
+async def async_setup_entry(hass: HomeAssistant, entry: BtclockConfigEntry) -> bool:
+    """Set up a BTClock device from a config entry."""
+    client = BtclockClient(
+        host=entry.data[CONF_HOST],
+        session=async_get_clientsession(hass),
+        username=entry.data.get(CONF_USERNAME),
+        password=entry.data.get(CONF_PASSWORD),
     )
-    # https://developers.home-assistant.io/docs/integration_fetching_data#coordinated-single-api-poll-for-data-for-all-entities
 
-    await coordinator.client.load_settings()
+    try:
+        await client.async_load_settings()
+    except BtclockAuthError as err:
+        raise ConfigEntryAuthFailed(str(err)) from err
+    except BtclockCommunicationError as err:
+        raise ConfigEntryNotReady(str(err)) from err
 
+    coordinator = BtclockCoordinator(hass, entry, client)
     await coordinator.async_config_entry_first_refresh()
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-    entry.async_on_unload(entry.add_update_listener(async_reload_entry))
 
+    entry.runtime_data = coordinator
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    await coordinator.async_start_push()
+
+    entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     return True
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Handle removal of an entry."""
-    if unloaded := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
-        hass.data[DOMAIN].pop(entry.entry_id)
-    return unloaded
+async def async_unload_entry(hass: HomeAssistant, entry: BtclockConfigEntry) -> bool:
+    """Unload a config entry — stop the SSE task and tear down platforms."""
+    coordinator = entry.runtime_data
+    await coordinator.async_stop_push()
+    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
 
-async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Reload config entry."""
-    await async_unload_entry(hass, entry)
-    await async_setup_entry(hass, entry)
+async def _async_update_listener(
+    hass: HomeAssistant, entry: BtclockConfigEntry
+) -> None:
+    """Reload when options or data change."""
+    await hass.config_entries.async_reload(entry.entry_id)

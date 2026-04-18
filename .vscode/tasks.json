@@ -2,9 +2,31 @@
     "version": "2.0.0",
     "tasks": [
         {
+            "label": "test",
+            "type": "shell",
+            "command": "scripts/test",
+            "group": { "kind": "test", "isDefault": true },
+            "problemMatcher": []
+        },
+        {
+            "label": "check",
+            "type": "shell",
+            "command": "scripts/check",
+            "group": "test",
+            "problemMatcher": []
+        },
+        {
             "label": "Run Home Assistant on port 8123",
             "type": "shell",
             "command": "scripts/develop",
+            "isBackground": true,
+            "problemMatcher": []
+        },
+        {
+            "label": "Run Home Assistant (debugpy on :5678)",
+            "type": "shell",
+            "command": "BTCLOCK_DEBUGPY=1 scripts/develop",
+            "isBackground": true,
             "problemMatcher": []
         }
     ]

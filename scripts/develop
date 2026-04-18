@@ -10,11 +10,13 @@ if [[ ! -d "${PWD}/config" ]]; then
     hass --config "${PWD}/config" --script ensure_config
 fi
 
-# Set the path to custom_components
-## This let's us have the structure we want <root>/custom_components/btclock
-## while at the same time have Home Assistant configuration inside <root>/config
-## without resulting to symlinks.
+# Let HA find the integration at <root>/custom_components/btclock
 export PYTHONPATH="${PYTHONPATH}:${PWD}/custom_components"
 
-# Start Home Assistant
-hass --config "${PWD}/config" --debug
+# If BTCLOCK_DEBUGPY=1, start under debugpy for VSCode attach on :5678
+if [[ "${BTCLOCK_DEBUGPY:-0}" == "1" ]]; then
+    exec python3 -m debugpy --listen 0.0.0.0:5678 --wait-for-client \
+        -m homeassistant --config "${PWD}/config" --debug
+else
+    exec hass --config "${PWD}/config" --debug
+fi

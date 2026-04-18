@@ -1,71 +1,82 @@
-"""Sensor platform for btclock."""
+"""Select entities: screen + currency."""
+
 from __future__ import annotations
 
-from homeassistant.components.select import SelectEntity, SelectEntityDescription
-from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.components.select import SelectEntity
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .const import DOMAIN
-from .coordinator import BtclockDataUpdateCoordinator
+from . import BtclockConfigEntry
+from .coordinator import BtclockCoordinator
 from .entity import BtclockEntity
-
-ENTITY_DESCRIPTIONS = (
-    SelectEntityDescription(
-        key="btclock_screen",
-        name="Current screen",
-        icon="mdi:monitor",
-    ),
-)
+from .models import ApiVariant
 
 
-async def async_setup_entry(hass, entry, async_add_devices):
-    """Set up the sensor platform."""
-    coordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_devices(
-        BtclockSensor(
-            coordinator=coordinator,
-            entity_description=entity_description,
-        )
-        for entity_description in ENTITY_DESCRIPTIONS
-    )
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: BtclockConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
+) -> None:
+    coordinator = entry.runtime_data
+    entities: list[SelectEntity] = [BtclockScreenSelect(coordinator)]
+    if (
+        coordinator.client.variant is ApiVariant.V3_4
+        and coordinator.client.settings.get("actCurrencies")
+    ):
+        entities.append(BtclockCurrencySelect(coordinator))
+    async_add_entities(entities)
 
 
-class BtclockSensor(BtclockEntity, SelectEntity):
-    """btclock Sensor class."""
+class BtclockScreenSelect(BtclockEntity, SelectEntity):
+    _attr_translation_key = "screen"
+    _attr_icon = "mdi:monitor"
 
-    def __init__(
-        self,
-        coordinator: BtclockDataUpdateCoordinator,
-        entity_description: SelectEntityDescription,
-    ) -> None:
-        """Initialize the sensor class."""
-        self._attr_options = coordinator.client.get_screens()
-        self.screenMap = coordinator.client.get_screens()
+    def __init__(self, coordinator: BtclockCoordinator) -> None:
         super().__init__(coordinator)
-        self.entity_description = entity_description
+        self._attr_unique_id = f"{coordinator.config_entry.entry_id}_screen"
 
-    @property
-    def device_info(self):
-        """Return the Device info for this sensor."""
-        return DeviceInfo(
-            identifiers={(DOMAIN, self.coordinator.config_entry.entry_id)},
-            name=self.coordinator.client._settings_data.get('hostname'),
-            sw_version=self.coordinator.client._settings_data.get('gitRev'),
-            model="V3"
-        )
+    def _screens(self) -> list[dict]:
+        """Return screens that are enabled (or all, on legacy which lacks `enabled`)."""
+        screens = self.coordinator.client.settings.get("screens") or []
+        filtered = [s for s in screens if s.get("enabled", True)]
+        return filtered or list(screens)
 
     @property
     def options(self) -> list[str]:
-        """Return a set of selectable options."""
-        return list(self.screenMap.values())
+        return [s.get("name", "") for s in self._screens()]
 
     @property
-    def current_option(self) -> str:
-        """Return the native value of the sensor."""
-        return self.screenMap.get(self.coordinator.data.get("currentScreen"))
+    def current_option(self) -> str | None:
+        current_id = self.coordinator.data.get("currentScreen")
+        for s in self._screens():
+            if s.get("id") == current_id:
+                return s.get("name")
+        return None
 
     async def async_select_option(self, option: str) -> None:
-        """Change the selected option."""
-        reverse_lookup = {value: key for key, value in self.screenMap.items()}
+        for s in self._screens():
+            if s.get("name") == option:
+                await self.coordinator.client.async_set_screen(int(s["id"]))
+                await self.coordinator.async_request_refresh()
+                return
 
-        await self.coordinator.client.async_set_screen(reverse_lookup.get(option))
+
+class BtclockCurrencySelect(BtclockEntity, SelectEntity):
+    _attr_translation_key = "currency"
+    _attr_icon = "mdi:currency-usd"
+
+    def __init__(self, coordinator: BtclockCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.config_entry.entry_id}_currency"
+
+    @property
+    def options(self) -> list[str]:
+        return list(self.coordinator.client.settings.get("actCurrencies") or [])
+
+    @property
+    def current_option(self) -> str | None:
+        return self.coordinator.data.get("currency")
+
+    async def async_select_option(self, option: str) -> None:
+        await self.coordinator.client.async_set_currency(option)
         await self.coordinator.async_request_refresh()

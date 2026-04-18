@@ -1,0 +1,24 @@
+{
+  "currentScreen": 0,
+  "numScreens": 7,
+  "timerRunning": true,
+  "isOTAUpdating": false,
+  "espUptime": 12345,
+  "espFreeHeap": 123456,
+  "espHeapSize": 262144,
+  "connectionStatus": {
+    "price": true,
+    "blocks": true,
+    "V2": false,
+    "nostr": false
+  },
+  "rssi": -55,
+  "currency": "USD",
+  "data": ["8", "9", "6", "1", "2", "3", "4"],
+  "leds": [
+    { "hex": "#000000", "red": 0, "green": 0, "blue": 0 },
+    { "hex": "#000000", "red": 0, "green": 0, "blue": 0 },
+    { "hex": "#000000", "red": 0, "green": 0, "blue": 0 },
+    { "hex": "#000000", "red": 0, "green": 0, "blue": 0 }
+  ]
+}

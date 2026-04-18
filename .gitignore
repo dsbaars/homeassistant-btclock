@@ -7,8 +7,11 @@ __pycache__
 
 
 # misc
+.venv/
 .coverage
-.vscode
+.vscode/*
+!.vscode/launch.json
+!.vscode/tasks.json
 coverage.xml
 
 

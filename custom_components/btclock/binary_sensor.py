@@ -1,85 +1,140 @@
-"""Binary sensor platform for btclock."""
+"""Binary sensor entities."""
+
 from __future__ import annotations
+
+from collections.abc import Callable
+from dataclasses import dataclass
 
 from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
     BinarySensorEntity,
     BinarySensorEntityDescription,
 )
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity import EntityCategory
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .const import DOMAIN
-from .coordinator import BtclockDataUpdateCoordinator
+from . import BtclockConfigEntry
+from .coordinator import BtclockCoordinator
 from .entity import BtclockEntity
-from homeassistant.helpers.entity import DeviceInfo
-
-conn_status_map = {'btclock_price': 'price', 'btclock_blocks': 'blocks'}
 
 
-ENTITY_DESCRIPTIONS = (
-    BinarySensorEntityDescription(
-        key="btclock_price",
-        name="Price data source",
+@dataclass(frozen=True, kw_only=True)
+class BtclockBinarySensorDescription(BinarySensorEntityDescription):
+    value_fn: Callable[[BtclockCoordinator], bool | None]
+    available_fn: Callable[[BtclockCoordinator], bool] | None = None
+    # When set, overrides entity_registry_enabled_default at setup time based
+    # on live device state. Used to auto-enable the V2/nostr sensors on
+    # devices whose dataSource actually uses those feeds.
+    enabled_default_fn: Callable[[BtclockCoordinator], bool] | None = None
+
+
+def _conn(key: str) -> Callable[[BtclockCoordinator], bool | None]:
+    def _fn(c: BtclockCoordinator) -> bool | None:
+        cs = c.data.get("connectionStatus") or {}
+        return cs.get(key)
+
+    return _fn
+
+
+def _conn_active_at_setup(key: str) -> Callable[[BtclockCoordinator], bool]:
+    """Enable-by-default if this feed is currently reporting connected."""
+
+    def _fn(c: BtclockCoordinator) -> bool:
+        cs = c.data.get("connectionStatus") or {}
+        return bool(cs.get(key))
+
+    return _fn
+
+
+BINARY_SENSORS: tuple[BtclockBinarySensorDescription, ...] = (
+    BtclockBinarySensorDescription(
+        key="price_connected",
+        translation_key="price_connected",
         device_class=BinarySensorDeviceClass.CONNECTIVITY,
+        value_fn=_conn("price"),
+        enabled_default_fn=_conn_active_at_setup("price"),
     ),
-    BinarySensorEntityDescription(
-        key="btclock_blocks",
-        name="Blocks data source",
+    BtclockBinarySensorDescription(
+        key="blocks_connected",
+        translation_key="blocks_connected",
         device_class=BinarySensorDeviceClass.CONNECTIVITY,
+        value_fn=_conn("blocks"),
+        enabled_default_fn=_conn_active_at_setup("blocks"),
     ),
-    BinarySensorEntityDescription(
-        key="btclock_timer_active",
-        name="Timer active",
+    BtclockBinarySensorDescription(
+        key="v2_connected",
+        translation_key="v2_connected",
+        device_class=BinarySensorDeviceClass.CONNECTIVITY,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=_conn("V2"),
+        enabled_default_fn=_conn_active_at_setup("V2"),
+    ),
+    BtclockBinarySensorDescription(
+        key="nostr_connected",
+        translation_key="nostr_connected",
+        device_class=BinarySensorDeviceClass.CONNECTIVITY,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=_conn("nostr"),
+        enabled_default_fn=_conn_active_at_setup("nostr"),
+    ),
+    BtclockBinarySensorDescription(
+        key="timer_running",
+        translation_key="timer_running",
         device_class=BinarySensorDeviceClass.RUNNING,
+        value_fn=lambda c: c.data.get("timerRunning"),
+    ),
+    BtclockBinarySensorDescription(
+        key="ota_updating",
+        translation_key="ota_updating",
+        device_class=BinarySensorDeviceClass.UPDATE,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda c: c.data.get("isOTAUpdating"),
+    ),
+    BtclockBinarySensorDescription(
+        key="dnd_active",
+        translation_key="dnd_active",
+        value_fn=lambda c: (c.data.get("dnd") or {}).get("active"),
+        available_fn=lambda c: "dnd" in (c.data or {}),
     ),
 )
 
 
-async def async_setup_entry(hass, entry, async_add_devices):
-    """Set up the binary_sensor platform."""
-    coordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_devices(
-        BtclockBinarySensor(
-            coordinator=coordinator,
-            entity_description=entity_description,
-        )
-        for entity_description in ENTITY_DESCRIPTIONS
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: BtclockConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
+) -> None:
+    coordinator = entry.runtime_data
+    async_add_entities(
+        BtclockBinarySensor(coordinator, desc)
+        for desc in BINARY_SENSORS
+        if desc.available_fn is None or desc.available_fn(coordinator)
     )
 
 
 class BtclockBinarySensor(BtclockEntity, BinarySensorEntity):
-    """btclock binary_sensor class."""
+    entity_description: BtclockBinarySensorDescription
 
     def __init__(
         self,
-        coordinator: BtclockDataUpdateCoordinator,
-        entity_description: BinarySensorEntityDescription,
+        coordinator: BtclockCoordinator,
+        description: BtclockBinarySensorDescription,
     ) -> None:
-        """Initialize the binary_sensor class."""
-        self.key = entity_description.key
-        self.entity_description = entity_description
-       #self.name = entity_description.key
         super().__init__(coordinator)
+        self.entity_description = description
+        self._attr_unique_id = f"{coordinator.config_entry.entry_id}_{description.key}"
+        if description.enabled_default_fn is not None:
+            # Override the description's static default with the live-state check.
+            # Any-key=True wins; we don't *disable* a sensor that the description
+            # defaulted to enabled.
+            if description.enabled_default_fn(coordinator):
+                self._attr_entity_registry_enabled_default = True
+            elif description.entity_registry_enabled_default is False:
+                self._attr_entity_registry_enabled_default = False
 
     @property
-    def device_info(self):
-        """Return the Device info for this sensor."""
-        return DeviceInfo(
-            identifiers={(DOMAIN, self.coordinator.config_entry.entry_id)},
-            name=self.coordinator.client._settings_data.get('hostname'),
-            sw_version=self.coordinator.client._settings_data.get('gitRev'),
-            model="V3"
-        )
-
-    @property
-    def unique_id(self):
-        """Return the unique ID for this sensor."""
-        return self.coordinator.config_entry.entry_id + "_" + self.key
-
-
-    @property
-    def is_on(self) -> bool:
-        """Return true if the binary_sensor is on."""
-        if (self.key == "btclock_timer_active"):
-            return self.coordinator.data.get("timerRunning")
-        else:
-            return self.coordinator.data.get("connectionStatus").get(conn_status_map.get(self.entity_description.key))
+    def is_on(self) -> bool | None:
+        return self.entity_description.value_fn(self.coordinator)

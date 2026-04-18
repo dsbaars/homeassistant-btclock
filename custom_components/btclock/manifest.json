@@ -1,14 +1,17 @@
 {
   "domain": "btclock",
   "name": "BTClock",
-  "codeowners": [
-    "@dsbaars"
-  ],
+  "codeowners": ["@dsbaars"],
   "config_flow": true,
-  "documentation": "https://github.com/dsbaars/homeassistant-btclock",
-  "iot_class": "cloud_polling",
-  "issue_tracker": "https://github.com/dsbaars/homeassistant-btclock/issues",
-  "version": "0.0.0",
+  "documentation": "https://git.btclock.dev/btclock/homeassistant-btclock",
+  "integration_type": "device",
+  "iot_class": "local_push",
+  "issue_tracker": "https://git.btclock.dev/btclock/homeassistant-btclock/issues",
+  "loggers": ["custom_components.btclock"],
+  "min_ha_version": "2025.11.0",
+  "quality_scale": "silver",
+  "requirements": [],
+  "version": "0.2.0",
   "zeroconf": [
     {
       "type": "_http._tcp.local.",

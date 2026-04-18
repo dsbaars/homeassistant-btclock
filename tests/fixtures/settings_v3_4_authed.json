@@ -1,0 +1,34 @@
+{
+  "hostname": "btclock-9d5530",
+  "hostnamePrefix": "btclock",
+  "ip": "192.168.20.97",
+  "hwRev": "REV_B_EPD_2_13",
+  "fsRev": "feature/3.4.0",
+  "gitRev": "53eb658",
+  "gitTag": "3.4.0",
+  "lastBuildTime": "1744934400",
+  "numScreens": 7,
+  "timerSeconds": 1800,
+  "timerRunning": true,
+  "tzString": "UTC0",
+  "dataSource": 0,
+  "hasFrontlight": true,
+  "hasLightLevel": true,
+  "httpAuthEnabled": true,
+  "httpAuthUser": "btclock",
+  "httpAuthPassSet": true,
+  "ceEndpoint": "",
+  "screens": [
+    { "id": 0, "name": "Current block height", "enabled": true }
+  ],
+  "actCurrencies": ["USD"],
+  "availableCurrencies": ["USD", "EUR"],
+  "dnd": {
+    "enabled": false,
+    "dndTimeEnabled": false,
+    "startHour": 22,
+    "startMinute": 30,
+    "endHour": 7,
+    "endMinute": 0
+  }
+}
