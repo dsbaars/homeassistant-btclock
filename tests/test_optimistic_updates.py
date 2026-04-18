@@ -196,6 +196,298 @@ async def test_staggered_led_toggles_accumulate(
             )
 
 
+async def _fake_post_with_latency(latency_s: float, sent: list[list[dict]]):
+    """Helper: return a fake POST that records payloads and sleeps."""
+    import asyncio
+
+    async def _post(_client, leds):
+        sent.append([dict(led) for led in leds])
+        await asyncio.sleep(latency_s)
+
+    return _post
+
+
+async def test_same_led_rapid_toggle_ends_correctly(
+    hass: HomeAssistant, load_fixture, status_leds_off
+) -> None:
+    """Rapid on→off→on on the same LED: final state is on, payloads are
+    coherent, and the middle off-state isn't lost as a zombie value."""
+    import asyncio
+
+    entry = await _setup(hass, load_fixture("settings_v3_4_revb"), status_leds_off)
+    coord = entry.runtime_data
+
+    sent: list[list[dict]] = []
+    with patch.object(
+        BtclockClient,
+        "async_set_lights",
+        new=await _fake_post_with_latency(0.15, sent),
+    ):
+        tasks = [
+            hass.async_create_task(
+                hass.services.async_call(
+                    "light",
+                    "turn_on",
+                    {
+                        "entity_id": "light.btclock_9d5530_led_1",
+                        "rgb_color": [255, 0, 0],
+                    },
+                    blocking=True,
+                )
+            )
+        ]
+        await asyncio.sleep(0.05)
+        tasks.append(
+            hass.async_create_task(
+                hass.services.async_call(
+                    "light",
+                    "turn_off",
+                    {"entity_id": "light.btclock_9d5530_led_1"},
+                    blocking=True,
+                )
+            )
+        )
+        await asyncio.sleep(0.05)
+        tasks.append(
+            hass.async_create_task(
+                hass.services.async_call(
+                    "light",
+                    "turn_on",
+                    {
+                        "entity_id": "light.btclock_9d5530_led_1",
+                        "rgb_color": [0, 0, 255],
+                    },
+                    blocking=True,
+                )
+            )
+        )
+        await asyncio.gather(*tasks)
+
+    # Each call saw the previous call's optimistic state.
+    assert len(sent) == 3
+    assert [p[0]["hex"] for p in sent] == ["#FF0000", "#000000", "#0000FF"]
+    # Final state is blue-on.
+    assert coord.data["leds"][0]["hex"] == "#0000FF"
+
+
+async def test_mixed_on_off_interleaved(hass: HomeAssistant, load_fixture) -> None:
+    """LEDs 0/2 are already on; toggle 0 off, 1 on, 2 off, 3 on back-to-back.
+    Final state must reflect every intended change."""
+    import asyncio
+
+    status = load_fixture("status_v3_4_revb").copy()
+    status["leds"] = [
+        {"hex": "#FF0000", "red": 255, "green": 0, "blue": 0},
+        {"hex": "#000000", "red": 0, "green": 0, "blue": 0},
+        {"hex": "#00FF00", "red": 0, "green": 255, "blue": 0},
+        {"hex": "#000000", "red": 0, "green": 0, "blue": 0},
+    ]
+    entry = await _setup(hass, load_fixture("settings_v3_4_revb"), status)
+    coord = entry.runtime_data
+
+    sent: list[list[dict]] = []
+    with patch.object(
+        BtclockClient,
+        "async_set_lights",
+        new=await _fake_post_with_latency(0.15, sent),
+    ):
+
+        async def call(service: str, index: int, rgb: list[int] | None = None) -> None:
+            data = {"entity_id": f"light.btclock_9d5530_led_{index + 1}"}
+            if rgb is not None:
+                data["rgb_color"] = rgb
+            await hass.services.async_call("light", service, data, blocking=True)
+
+        tasks = []
+        for op in [
+            ("turn_off", 0, None),
+            ("turn_on", 1, [0, 0, 255]),
+            ("turn_off", 2, None),
+            ("turn_on", 3, [255, 255, 0]),
+        ]:
+            tasks.append(hass.async_create_task(call(*op)))
+            await asyncio.sleep(0.05)
+        await asyncio.gather(*tasks)
+
+    # Walk the payload tape: each entry must match the running expected state.
+    expected_progression = [
+        ["#000000", "#000000", "#00FF00", "#000000"],  # LED 0 off
+        ["#000000", "#0000FF", "#00FF00", "#000000"],  # LED 1 on (blue)
+        ["#000000", "#0000FF", "#000000", "#000000"],  # LED 2 off
+        ["#000000", "#0000FF", "#000000", "#FFFF00"],  # LED 3 on (yellow)
+    ]
+    assert [[p["hex"] for p in payload] for payload in sent] == expected_progression
+
+    assert [led["hex"] for led in coord.data["leds"]] == [
+        "#000000",
+        "#0000FF",
+        "#000000",
+        "#FFFF00",
+    ]
+
+
+async def test_rgb_color_sequence_on_same_led(
+    hass: HomeAssistant, load_fixture, status_leds_off
+) -> None:
+    """LED 0: red → green → blue in rapid succession. Final colour is blue;
+    each intermediate POST carries the color that was current at call time."""
+    import asyncio
+
+    entry = await _setup(hass, load_fixture("settings_v3_4_revb"), status_leds_off)
+    coord = entry.runtime_data
+
+    sent: list[list[dict]] = []
+    with patch.object(
+        BtclockClient,
+        "async_set_lights",
+        new=await _fake_post_with_latency(0.15, sent),
+    ):
+        tasks = []
+        for rgb in ([255, 0, 0], [0, 255, 0], [0, 0, 255]):
+            tasks.append(
+                hass.async_create_task(
+                    hass.services.async_call(
+                        "light",
+                        "turn_on",
+                        {
+                            "entity_id": "light.btclock_9d5530_led_1",
+                            "rgb_color": rgb,
+                        },
+                        blocking=True,
+                    )
+                )
+            )
+            await asyncio.sleep(0.05)
+        await asyncio.gather(*tasks)
+
+    assert [p[0]["hex"] for p in sent] == ["#FF0000", "#00FF00", "#0000FF"]
+    assert coord.data["leds"][0] == {
+        "hex": "#0000FF",
+        "red": 0,
+        "green": 0,
+        "blue": 255,
+    }
+
+
+async def test_sse_frame_during_led_write_is_reconciled_after(
+    hass: HomeAssistant, load_fixture, status_leds_off
+) -> None:
+    """An SSE frame arriving mid-write sets the baseline, but the optimistic
+    update fired after the POST returns is what the UI ends up on."""
+    import asyncio
+
+    entry = await _setup(hass, load_fixture("settings_v3_4_revb"), status_leds_off)
+    coord = entry.runtime_data
+
+    post_entered = asyncio.Event()
+
+    async def slow_post(_client, _leds):
+        post_entered.set()
+        await asyncio.sleep(0.2)
+
+    with patch.object(BtclockClient, "async_set_lights", new=slow_post):
+        write_task = hass.async_create_task(
+            hass.services.async_call(
+                "light",
+                "turn_on",
+                {
+                    "entity_id": "light.btclock_9d5530_led_1",
+                    "rgb_color": [255, 128, 0],
+                },
+                blocking=True,
+            )
+        )
+        await post_entered.wait()
+        # Simulate a stale SSE frame landing mid-write with LEDs all off.
+        await coord._on_status_frame(  # noqa: SLF001
+            {"leds": [{"hex": "#000000"} for _ in range(4)]}
+        )
+        # Optimistic update fires after the fake POST completes and wins.
+        await write_task
+
+    assert coord.data["leds"][0]["hex"] == "#FF8000"
+
+
+async def test_burst_of_writes_preserves_all(
+    hass: HomeAssistant, load_fixture, status_leds_off
+) -> None:
+    """Fire 12 back-to-back LED writes across 4 LEDs; every LED ends with
+    the last colour requested for it and no payload ever regressed state."""
+    import asyncio
+
+    entry = await _setup(hass, load_fixture("settings_v3_4_revb"), status_leds_off)
+    coord = entry.runtime_data
+
+    operations = [
+        (0, [255, 0, 0]),
+        (1, [0, 255, 0]),
+        (0, [255, 255, 0]),
+        (2, [0, 0, 255]),
+        (1, [255, 0, 255]),
+        (3, [0, 255, 255]),
+        (0, [255, 255, 255]),
+        (2, [128, 128, 128]),
+        (3, [64, 64, 64]),
+        (1, [0, 0, 0]),  # LED 1 off via turn_off path would be cleaner;
+        # turn_on with (0,0,0) is bumped to white, so use off.
+    ]
+
+    async def do(i: int, rgb: list[int]) -> None:
+        if rgb == [0, 0, 0]:
+            await hass.services.async_call(
+                "light",
+                "turn_off",
+                {"entity_id": f"light.btclock_9d5530_led_{i + 1}"},
+                blocking=True,
+            )
+        else:
+            await hass.services.async_call(
+                "light",
+                "turn_on",
+                {
+                    "entity_id": f"light.btclock_9d5530_led_{i + 1}",
+                    "rgb_color": rgb,
+                },
+                blocking=True,
+            )
+
+    sent: list[list[dict]] = []
+    with patch.object(
+        BtclockClient,
+        "async_set_lights",
+        new=await _fake_post_with_latency(0.05, sent),
+    ):
+        tasks = []
+        for i, rgb in operations:
+            tasks.append(hass.async_create_task(do(i, rgb)))
+            await asyncio.sleep(0.02)
+        await asyncio.gather(*tasks)
+
+    # Compute the expected final state from the operation sequence.
+    expected = [[0, 0, 0] for _ in range(4)]
+    for i, rgb in operations:
+        expected[i] = rgb
+    expected_hex = ["#{:02X}{:02X}{:02X}".format(*c) for c in expected]
+    expected_hex[1] = "#000000"  # last op set LED 1 off
+
+    assert [led["hex"] for led in coord.data["leds"]] == expected_hex
+    assert len(sent) == len(operations)
+    # No payload ever reverted a previously-set LED: each payload must be a
+    # superset-or-equal of the previous payload's non-off LEDs for indices
+    # not touched by the current operation.
+    for call_idx in range(1, len(sent)):
+        prev = sent[call_idx - 1]
+        curr = sent[call_idx]
+        touched = operations[call_idx][0]
+        for j in range(4):
+            if j == touched:
+                continue
+            assert curr[j]["hex"] == prev[j]["hex"], (
+                f"call {call_idx} leaked previous LED {j}: "
+                f"{prev[j]['hex']} → {curr[j]['hex']}"
+            )
+
+
 async def test_screen_select_optimistic(hass: HomeAssistant, load_fixture) -> None:
     status = load_fixture("status_v3_4_revb").copy()
     status["currentScreen"] = 0
