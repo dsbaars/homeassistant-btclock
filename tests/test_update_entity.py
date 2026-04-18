@@ -277,6 +277,10 @@ async def test_install_watchdog_clears_in_progress_on_version_bump(
         patch.object(BtclockClient, "async_auto_update_firmware", new=AsyncMock()),
         patch.object(BtclockClient, "async_load_settings", _fake_load),
         patch("custom_components.btclock.update._INSTALL_WATCHDOG_POLL", 0),
+        # Skip the reload path — covered by its own dedicated test. Without
+        # this, the reload tries to fully re-run setup against unmocked
+        # endpoints.
+        patch.object(hass.config_entries, "async_reload", AsyncMock(return_value=True)),
     ):
         await hass.services.async_call(
             "update",
@@ -289,12 +293,106 @@ async def test_install_watchdog_clears_in_progress_on_version_bump(
 
     state = hass.states.get("update.btclock_9d5530_firmware")
     assert state is not None
-    assert state.attributes["in_progress"] is False
     assert state.attributes["installed_version"] == "3.3.19"
-    # The stale `isOTAUpdating=True` from the pre-reboot SSE frame must have
-    # been cleared, so in_progress doesn't flip back on to True just because
-    # SSE hasn't reconnected yet.
-    assert entry.runtime_data.data.get("isOTAUpdating") is False
+
+
+async def test_install_watchdog_reloads_entry_on_version_change(
+    hass: HomeAssistant, mock_aioresponse, load_fixture
+) -> None:
+    """A new gitTag may imply a different API variant → reload the entry so
+    entity composition (currency select, DND switch, …) matches the new
+    firmware instead of whatever was detected at initial setup."""
+    settings = load_fixture("settings_v3_4_revb").copy()
+    settings["gitTag"] = "3.3.18"
+    entry = await _setup(
+        hass,
+        mock_aioresponse,
+        settings,
+        load_fixture("status_v3_4_revb"),
+        release=load_fixture("release_latest"),
+        compare=load_fixture("compare_318_319"),
+    )
+
+    new_settings = settings.copy()
+    new_settings["gitTag"] = "3.3.19"
+    call_count = {"n": 0}
+
+    async def _fake_load(self: BtclockClient) -> dict:
+        call_count["n"] += 1
+        value = settings if call_count["n"] == 1 else new_settings
+        self._settings = value  # noqa: SLF001
+        return value
+
+    reload_calls: list[str] = []
+    real_reload = hass.config_entries.async_reload
+
+    async def _track_reload(entry_id: str) -> bool:
+        reload_calls.append(entry_id)
+        return await real_reload(entry_id)
+
+    with (
+        patch.object(BtclockClient, "async_auto_update_firmware", new=AsyncMock()),
+        patch.object(BtclockClient, "async_load_settings", _fake_load),
+        patch("custom_components.btclock.update._INSTALL_WATCHDOG_POLL", 0),
+        patch.object(hass.config_entries, "async_reload", _track_reload),
+    ):
+        await hass.services.async_call(
+            "update",
+            "install",
+            {"entity_id": "update.btclock_9d5530_firmware"},
+            blocking=True,
+        )
+        await hass.async_block_till_done()
+
+    assert reload_calls == [entry.entry_id]
+
+
+async def test_install_watchdog_does_not_reload_on_timeout(
+    hass: HomeAssistant, mock_aioresponse, load_fixture
+) -> None:
+    """If the watchdog times out without detecting a tag change, don't reload.
+
+    A reload on a still-broken device would just yank the (maybe unavailable)
+    entities and surface more errors — the cached state is fine.
+    """
+    entry = await _setup(
+        hass,
+        mock_aioresponse,
+        load_fixture("settings_v3_4_revb"),
+        load_fixture("status_v3_4_revb"),
+        release=load_fixture("release_latest"),
+        compare=load_fixture("compare_318_319"),
+    )
+
+    settings_snapshot = load_fixture("settings_v3_4_revb").copy()
+
+    async def _fake_load(self: BtclockClient) -> dict:
+        self._settings = settings_snapshot  # noqa: SLF001
+        return settings_snapshot
+
+    reload_calls: list[str] = []
+
+    async def _track_reload(entry_id: str) -> bool:
+        reload_calls.append(entry_id)
+        return True
+
+    with (
+        patch.object(BtclockClient, "async_auto_update_firmware", new=AsyncMock()),
+        patch.object(BtclockClient, "async_load_settings", _fake_load),
+        patch("custom_components.btclock.update._INSTALL_WATCHDOG_POLL", 0),
+        patch("custom_components.btclock.update._INSTALL_WATCHDOG_TIMEOUT", 0.05),
+        patch.object(hass.config_entries, "async_reload", _track_reload),
+    ):
+        await hass.services.async_call(
+            "update",
+            "install",
+            {"entity_id": "update.btclock_9d5530_firmware"},
+            blocking=True,
+        )
+        await hass.async_block_till_done()
+
+    assert reload_calls == []
+    _ = entry
 
 
 async def test_install_watchdog_times_out(

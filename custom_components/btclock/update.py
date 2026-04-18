@@ -332,8 +332,15 @@ class BtclockUpdate(BtclockEntity, UpdateEntity):
         push a status frame when OTA starts, and SSE drops across the
         reboot — so a True→False transition can be missed or delayed well
         past the actual completion.
+
+        On a successful firmware change we also schedule a config-entry
+        reload. The new firmware may be a different API variant (legacy
+        vs 3.4.0+) and that changes which platforms expose which entities;
+        reloading re-runs `async_setup_entry` so the entity set matches
+        the device's current capabilities.
         """
         client = self.coordinator.client
+        tag_changed = False
         try:
             deadline = self.hass.loop.time() + _INSTALL_WATCHDOG_TIMEOUT
             new_tag: str | None = old_tag
@@ -349,6 +356,7 @@ class BtclockUpdate(BtclockEntity, UpdateEntity):
                     LOGGER.info(
                         "OTA complete on %s: %s → %s", client.host, old_tag, new_tag
                     )
+                    tag_changed = True
                     return
                 LOGGER.debug(
                     "OTA poll: %s still reports gitTag=%s", client.host, new_tag
@@ -375,6 +383,15 @@ class BtclockUpdate(BtclockEntity, UpdateEntity):
             self.async_write_ha_state()
             # Installed version likely changed → re-evaluate "update available".
             await self._release.async_request_refresh()
+            if tag_changed:
+                # Reload the config entry in a detached task: calling
+                # async_reload synchronously from inside this finally block
+                # would cancel this very task (the update entity is about
+                # to be unloaded + recreated).
+                entry_id = self.coordinator.config_entry.entry_id
+                self.hass.async_create_task(
+                    self.hass.config_entries.async_reload(entry_id)
+                )
 
 
 async def async_setup_entry(
