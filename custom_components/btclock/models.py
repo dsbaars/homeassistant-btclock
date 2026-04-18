@@ -7,7 +7,7 @@ omit some newer fields (httpAuthPassSet, ceEndpoint, hasFrontlight, …).
 
 from __future__ import annotations
 
-from enum import StrEnum
+from enum import IntEnum, StrEnum
 from typing import TypedDict
 
 
@@ -16,6 +16,20 @@ class ApiVariant(StrEnum):
 
     LEGACY = "legacy"
     V3_4 = "v3.4"
+
+
+class DataSource(IntEnum):
+    """Firmware-defined enum for settings.dataSource.
+
+    The BTClock firmware (src/lib/system/config.cpp) routes upstream feeds
+    differently per value — see `price_feed_connected` / `blocks_feed_connected`
+    in the entity logic.
+    """
+
+    BTCLOCK = 0  # V2 relay (ws.btclock.dev)
+    THIRD_PARTY = 1  # mempool.space + Kraken
+    NOSTR = 2  # Nostr relay
+    CUSTOM = 3  # custom V2-compatible endpoint
 
 
 class LedDict(TypedDict, total=False):
@@ -100,6 +114,14 @@ class Settings(TypedDict, total=False):
     httpAuthPass: str  # legacy only
     otaPassSet: bool  # 3.4.0 only
     otaEnabled: bool
+    dataSource: int
+    nostrRelay: str
+    nostrPubKey: str
+    nostrZapPubkey: str
+    nostrZapNotify: bool
+    ledFlashOnZap: bool
+    ledFlashOnUpd: bool
+    stealFocus: bool
 
 
 class SystemStatus(TypedDict, total=False):

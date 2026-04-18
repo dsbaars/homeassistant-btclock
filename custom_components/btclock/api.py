@@ -118,6 +118,15 @@ class BtclockClient:
     async def async_get_system_status(self) -> SystemStatus:
         return await self._request_key("system_status") or {}
 
+    async def async_patch_settings(self, patch: dict[str, Any]) -> None:
+        """PATCH a partial settings update.
+
+        Both variants use the same body shape; only the path differs. Callers
+        should follow up with `async_load_settings()` so cached settings stay
+        in sync with what the device just accepted.
+        """
+        await self._request_key("settings_patch", json_body=patch, expect_json=False)
+
     # ---- Screen / timer control -------------------------------------------------
 
     async def async_timer_start(self) -> None:

@@ -50,10 +50,8 @@
     "binary_sensor": {
       "price_connected":  { "name": "Price feed" },
       "blocks_connected": { "name": "Blocks feed" },
-      "v2_connected":     { "name": "V2 feed" },
-      "nostr_connected":  { "name": "Nostr feed" },
+      "v2_connected":     { "name": "V2 relay" },
       "timer_running":    { "name": "Screen timer" },
-      "ota_updating":     { "name": "OTA updating" },
       "dnd_active":       { "name": "Do-not-disturb active" }
     },
     "button": {
@@ -75,14 +73,23 @@
     "sensor": {
       "current_screen": { "name": "Current screen" },
       "currency":       { "name": "Currency" },
+      "nostr_relay":    { "name": "Nostr relay" },
       "rssi":           { "name": "Signal strength" },
       "uptime":         { "name": "Uptime" },
       "free_heap":      { "name": "Free heap" },
-      "light_level":    { "name": "Ambient light level" }
+      "light_level":    { "name": "Ambient light level" },
+      "ota_state":      {
+        "name": "OTA state",
+        "state": { "idle": "Idle", "updating": "Updating" }
+      }
     },
     "switch": {
-      "timer": { "name": "Screen timer" },
-      "dnd":   { "name": "Do-not-disturb" }
+      "timer":             { "name": "Screen timer" },
+      "dnd":               { "name": "Do-not-disturb" },
+      "nostr_zap_notify":  { "name": "Nostr Zap notifications" },
+      "led_flash_on_zap":  { "name": "LED flash on Nostr Zap" },
+      "led_flash_on_update": { "name": "LED flash on new block" },
+      "steal_focus":       { "name": "Steal focus on new block" }
     }
   }
 }

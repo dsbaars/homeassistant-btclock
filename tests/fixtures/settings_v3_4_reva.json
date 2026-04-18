@@ -26,18 +26,58 @@
   "ceEndpoint": "",
   "ceDisableSSL": false,
   "screens": [
-    { "id": 0, "name": "Current block height", "enabled": true },
-    { "id": 1, "name": "Market cap",            "enabled": true },
-    { "id": 2, "name": "Block fee rates",       "enabled": true },
-    { "id": 3, "name": "Time since last block", "enabled": true },
-    { "id": 4, "name": "Market price",          "enabled": true },
-    { "id": 5, "name": "Halving countdown",     "enabled": true },
-    { "id": 6, "name": "Moscow time",           "enabled": true }
+    {
+      "id": 0,
+      "name": "Current block height",
+      "enabled": true
+    },
+    {
+      "id": 1,
+      "name": "Market cap",
+      "enabled": true
+    },
+    {
+      "id": 2,
+      "name": "Block fee rates",
+      "enabled": true
+    },
+    {
+      "id": 3,
+      "name": "Time since last block",
+      "enabled": true
+    },
+    {
+      "id": 4,
+      "name": "Market price",
+      "enabled": true
+    },
+    {
+      "id": 5,
+      "name": "Halving countdown",
+      "enabled": true
+    },
+    {
+      "id": 6,
+      "name": "Moscow time",
+      "enabled": true
+    }
   ],
-  "actCurrencies": ["USD"],
-  "availableCurrencies": ["USD", "EUR", "GBP", "JPY"],
-  "availableFonts": ["default", "antonio"],
-  "availablePools": [""],
+  "actCurrencies": [
+    "USD"
+  ],
+  "availableCurrencies": [
+    "USD",
+    "EUR",
+    "GBP",
+    "JPY"
+  ],
+  "availableFonts": [
+    "default",
+    "antonio"
+  ],
+  "availablePools": [
+    ""
+  ],
   "dnd": {
     "enabled": false,
     "dndTimeEnabled": false,
@@ -45,5 +85,12 @@
     "startMinute": 30,
     "endHour": 7,
     "endMinute": 0
-  }
+  },
+  "nostrRelay": "wss://relay.primal.net",
+  "nostrPubKey": "npub1example",
+  "nostrZapNotify": false,
+  "nostrZapPubkey": "",
+  "ledFlashOnZap": true,
+  "ledFlashOnUpd": true,
+  "stealFocus": true
 }

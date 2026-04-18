@@ -19,10 +19,19 @@
   "httpAuthPassSet": true,
   "ceEndpoint": "",
   "screens": [
-    { "id": 0, "name": "Current block height", "enabled": true }
+    {
+      "id": 0,
+      "name": "Current block height",
+      "enabled": true
+    }
   ],
-  "actCurrencies": ["USD"],
-  "availableCurrencies": ["USD", "EUR"],
+  "actCurrencies": [
+    "USD"
+  ],
+  "availableCurrencies": [
+    "USD",
+    "EUR"
+  ],
   "dnd": {
     "enabled": false,
     "dndTimeEnabled": false,
@@ -30,5 +39,12 @@
     "startMinute": 30,
     "endHour": 7,
     "endMinute": 0
-  }
+  },
+  "nostrRelay": "wss://relay.primal.net",
+  "nostrPubKey": "npub1example",
+  "nostrZapNotify": false,
+  "nostrZapPubkey": "",
+  "ledFlashOnZap": true,
+  "ledFlashOnUpd": true,
+  "stealFocus": true
 }

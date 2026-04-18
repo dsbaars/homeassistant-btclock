@@ -1,10 +1,15 @@
-"""Switch entities: screen timer + DND (3.4.0)."""
+"""Switch entities: screen timer, DND, and Nostr/LED/focus setting toggles."""
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any
 
-from homeassistant.components.switch import SwitchEntity
+from homeassistant.components.switch import (
+    SwitchEntity,
+    SwitchEntityDescription,
+)
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
@@ -23,6 +28,9 @@ async def async_setup_entry(
     entities: list[SwitchEntity] = [BtclockTimerSwitch(coordinator)]
     if coordinator.client.variant is ApiVariant.V3_4:
         entities.append(BtclockDndSwitch(coordinator))
+    entities.extend(
+        BtclockSettingsSwitch(coordinator, desc) for desc in SETTINGS_SWITCHES
+    )
     async_add_entities(entities)
 
 
@@ -67,3 +75,70 @@ class BtclockDndSwitch(BtclockEntity, SwitchEntity):
     async def async_turn_off(self, **_: Any) -> None:
         await self.coordinator.client.async_dnd_disable()
         await self.coordinator.async_request_refresh()
+
+
+@dataclass(frozen=True, kw_only=True)
+class BtclockSettingsSwitchDescription(SwitchEntityDescription):
+    """A boolean settings field that toggles via PATCH /api/settings."""
+
+    setting_key: str
+    available_fn: Callable[[BtclockCoordinator], bool] | None = None
+
+
+SETTINGS_SWITCHES: tuple[BtclockSettingsSwitchDescription, ...] = (
+    BtclockSettingsSwitchDescription(
+        key="nostr_zap_notify",
+        translation_key="nostr_zap_notify",
+        icon="mdi:lightning-bolt",
+        setting_key="nostrZapNotify",
+    ),
+    BtclockSettingsSwitchDescription(
+        key="led_flash_on_zap",
+        translation_key="led_flash_on_zap",
+        icon="mdi:led-on",
+        setting_key="ledFlashOnZap",
+    ),
+    BtclockSettingsSwitchDescription(
+        key="led_flash_on_update",
+        translation_key="led_flash_on_update",
+        icon="mdi:led-on",
+        setting_key="ledFlashOnUpd",
+    ),
+    BtclockSettingsSwitchDescription(
+        key="steal_focus",
+        translation_key="steal_focus",
+        icon="mdi:target",
+        setting_key="stealFocus",
+    ),
+)
+
+
+class BtclockSettingsSwitch(BtclockEntity, SwitchEntity):
+    """Writes a single boolean field via PATCH /api/settings."""
+
+    entity_description: BtclockSettingsSwitchDescription
+
+    def __init__(
+        self,
+        coordinator: BtclockCoordinator,
+        description: BtclockSettingsSwitchDescription,
+    ) -> None:
+        super().__init__(coordinator)
+        self.entity_description = description
+        self._attr_unique_id = f"{coordinator.config_entry.entry_id}_{description.key}"
+
+    @property
+    def is_on(self) -> bool | None:
+        return bool(
+            self.coordinator.client.settings.get(self.entity_description.setting_key)
+        )
+
+    async def async_turn_on(self, **_: Any) -> None:
+        await self.coordinator.async_patch_settings(
+            {self.entity_description.setting_key: True}
+        )
+
+    async def async_turn_off(self, **_: Any) -> None:
+        await self.coordinator.async_patch_settings(
+            {self.entity_description.setting_key: False}
+        )

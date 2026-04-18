@@ -36,10 +36,14 @@ class BtclockScreenSelect(BtclockEntity, SelectEntity):
         self._attr_unique_id = f"{coordinator.config_entry.entry_id}_screen"
 
     def _screens(self) -> list[dict]:
-        """Return screens that are enabled (or all, on legacy which lacks `enabled`)."""
-        screens = self.coordinator.client.settings.get("screens") or []
-        filtered = [s for s in screens if s.get("enabled", True)]
-        return filtered or list(screens)
+        """All screens, enabled or not.
+
+        The firmware lets a client switch to any screen via
+        POST /api/show/screen regardless of its `enabled` flag — that only
+        controls whether the screen appears in auto-rotation
+        (src/lib/ui/screen_handler.cpp:148). So we expose the full list.
+        """
+        return list(self.coordinator.client.settings.get("screens") or [])
 
     @property
     def options(self) -> list[str]:

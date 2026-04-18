@@ -24,16 +24,57 @@
   "httpAuthPass": "satoshi",
   "customEndpoint": "",
   "screens": [
-    { "id": 0, "name": "Current block height" },
-    { "id": 1, "name": "Market cap" },
-    { "id": 2, "name": "Block fee rates" },
-    { "id": 3, "name": "Time since last block" },
-    { "id": 4, "name": "Market price" },
-    { "id": 5, "name": "Halving countdown" },
-    { "id": 6, "name": "Moscow time" }
+    {
+      "id": 0,
+      "name": "Current block height"
+    },
+    {
+      "id": 1,
+      "name": "Market cap"
+    },
+    {
+      "id": 2,
+      "name": "Block fee rates"
+    },
+    {
+      "id": 3,
+      "name": "Time since last block"
+    },
+    {
+      "id": 4,
+      "name": "Market price"
+    },
+    {
+      "id": 5,
+      "name": "Halving countdown"
+    },
+    {
+      "id": 6,
+      "name": "Moscow time"
+    }
   ],
-  "actCurrencies": ["USD", "EUR"],
-  "availableCurrencies": ["USD", "EUR", "GBP", "JPY"],
-  "availableFonts": ["default", "antonio"],
-  "availablePools": [""]
+  "actCurrencies": [
+    "USD",
+    "EUR"
+  ],
+  "availableCurrencies": [
+    "USD",
+    "EUR",
+    "GBP",
+    "JPY"
+  ],
+  "availableFonts": [
+    "default",
+    "antonio"
+  ],
+  "availablePools": [
+    ""
+  ],
+  "nostrRelay": "wss://relay.primal.net",
+  "nostrPubKey": "npub1example",
+  "nostrZapNotify": false,
+  "nostrZapPubkey": "",
+  "ledFlashOnZap": true,
+  "ledFlashOnUpd": true,
+  "stealFocus": true
 }

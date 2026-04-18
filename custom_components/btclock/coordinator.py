@@ -94,6 +94,23 @@ class BtclockCoordinator(DataUpdateCoordinator[Status]):
                 self._stream.consecutive_failures,
             )
 
+    # ---- Settings patch + reload ------------------------------------------
+
+    async def async_patch_settings(self, patch: dict) -> None:
+        """Apply a partial settings update and reload cached settings.
+
+        Entities that read from `client.settings` (Nostr switches, Nostr relay
+        sensor, etc.) pick up the change on the next state read — triggered by
+        the status refresh we request at the end.
+        """
+        try:
+            await self.client.async_patch_settings(patch)
+            await self.client.async_load_settings()
+        except BtclockAuthError as err:
+            raise ConfigEntryAuthFailed(str(err)) from err
+        # Nudge entities so any status-derived state updates too.
+        await self.async_request_refresh()
+
     # ---- Poll heartbeat ----------------------------------------------------
 
     async def _async_update_data(self) -> Status:
