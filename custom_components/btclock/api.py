@@ -177,18 +177,17 @@ class BtclockClient:
     async def async_lights_off(self) -> None:
         await self._request_key("lights_off", expect_json=False)
 
-    # ---- Actions (3.4.0 only) ---------------------------------------------------
+    # ---- Actions (both variants) ------------------------------------------------
+    # Legacy firmware serves these as GET, 3.4.0+ as POST — method dispatch is
+    # handled by the path tables, so these methods stay variant-agnostic.
 
     async def async_identify(self) -> None:
-        self._require_v3_4("identify")
         await self._request_key("identify", expect_json=False)
 
     async def async_restart(self) -> None:
-        self._require_v3_4("restart")
         await self._request_key("restart", expect_json=False)
 
     async def async_full_refresh(self) -> None:
-        self._require_v3_4("full_refresh")
         await self._request_key("full_refresh", expect_json=False)
 
     # ---- DND --------------------------------------------------------------------
