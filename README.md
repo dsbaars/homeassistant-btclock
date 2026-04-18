@@ -4,6 +4,9 @@
 
 _Home Assistant integration for the [BTClock](https://git.btclock.dev/btclock/btclock_v3) — an open-source Bitcoin price / block-height display._
 
+[![Open in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=dsbaars&repository=homeassistant-btclock&category=integration)
+[![Add integration](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=btclock)
+
 ## Supported firmware
 
 | Firmware               | Status    | Notes                                                 |
@@ -22,7 +25,22 @@ The variant is detected automatically from `GET /api/settings`.
 | `switch`        | Screen timer, Do-not-disturb (3.4.0+)                                     |
 | `select`        | Screen, currency (3.4.0+)                                                 |
 | `light`         | One entity per status LED, plus frontlight (when hardware present)        |
+| `number`        | LED brightness slider (0–255)                                             |
 | `button`        | Identify, restart, full refresh, next / previous screen, flash frontlight (3.4.0+) |
+| `update`        | Firmware update (auto-update or specific version, 3.4.0+ release builds)  |
+
+## Services
+
+| Service                | Purpose                                                          |
+|------------------------|------------------------------------------------------------------|
+| `btclock.show_text`    | Display a string across the device's screens (one char each, auto-uppercased, clamped to `numScreens`) |
+| `btclock.show_custom`  | Display one string per screen — handy for symbols or multi-char labels |
+
+## Firmware updates
+
+If the BTClock is running a real release (e.g. `3.3.19`, not a commit-hash dev build), the integration polls its configured `gitReleaseUrl` once a day and surfaces a firmware update entity — it also shows up in **Settings → Updates**. Release notes default to the release body; when that's empty, they're synthesized from the first-line commit messages of the compare API between the installed and latest tags.
+
+Installing the latest version fires `POST /api/firmware/auto_update` and lets the device download + flash itself. Installing an older version downloads the matching `{board}_firmware.bin` and `littlefs_{size}.bin` assets and uploads them to `/upload/firmware` and `/upload/webui`; the device reboots into the new image at the end.
 
 ## Data-source sensors
 
@@ -46,10 +64,9 @@ If the BTClock has `httpAuthEnabled` turned on, the config flow will prompt for 
 
 HACS currently only accepts GitHub repositories, so use the GitHub mirror — the git.btclock.dev Forgejo instance won't work.
 
-1. Open HACS → Integrations → menu → **Custom repositories**.
-2. Add `https://github.com/dsbaars/homeassistant-btclock` with category **Integration**.
-3. Install "BTClock Integration" and restart Home Assistant.
-4. **Settings → Devices & Services → Add Integration → BTClock**, or accept the auto-discovered zeroconf prompt.
+1. [![Open in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=dsbaars&repository=homeassistant-btclock&category=integration) — or manually: HACS → Integrations → menu → **Custom repositories** → add `https://github.com/dsbaars/homeassistant-btclock` with category **Integration**.
+2. Install "BTClock Integration" and restart Home Assistant.
+3. [![Add integration](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=btclock) — or **Settings → Devices & Services → Add Integration → BTClock**, or accept the auto-discovered zeroconf prompt.
 
 ## Manual installation
 

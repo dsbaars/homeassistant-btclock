@@ -1,0 +1,40 @@
+show_text:
+  name: Show text
+  description: Display arbitrary text across the BTClock's screens (firmware 3.4.0+). Characters are auto-uppercased; the string is clamped to the device's number of screens (max 7).
+  fields:
+    device_id:
+      name: BTClock
+      description: The BTClock device to target.
+      required: true
+      selector:
+        device:
+          integration: btclock
+    text:
+      name: Text
+      description: Uppercase text, one character per screen. Clamped to the device's screen count (typically 7, 8 on some boards).
+      required: true
+      example: "HODL"
+      selector:
+        text:
+          type: text
+          min: 1
+          max: 16
+
+show_custom:
+  name: Show custom screens
+  description: Display one string per screen; useful for multi-character labels or symbols (firmware 3.4.0+).
+  fields:
+    device_id:
+      name: BTClock
+      description: The BTClock device to target.
+      required: true
+      selector:
+        device:
+          integration: btclock
+    screens:
+      name: Screens
+      description: One string per screen. Clamped to the device's screen count.
+      required: true
+      example: "[\"B\", \"I\", \"T\", \"C\", \"O\", \"I\", \"N\"]"
+      selector:
+        object:

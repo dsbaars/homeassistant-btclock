@@ -67,6 +67,8 @@ V3_4_PATHS: Final[dict[str, PathEntry]] = {
     "timer_start": ("POST", "/api/action/timer_restart"),
     "show_screen": ("POST", "/api/show/screen"),  # ?s=
     "show_currency": ("POST", "/api/show/currency"),  # ?c=
+    "show_text": ("POST", "/api/show/text"),  # ?t=
+    "show_custom": ("POST", "/api/show/custom"),  # JSON array body
     "screen_next": ("POST", "/api/screen/next"),
     "screen_prev": ("POST", "/api/screen/previous"),
     "lights_get": ("GET", "/api/lights"),
@@ -84,6 +86,9 @@ V3_4_PATHS: Final[dict[str, PathEntry]] = {
     "frontlight_off": ("POST", "/api/frontlight/off"),
     "frontlight_flash": ("POST", "/api/frontlight/flash"),
     "frontlight_bright": ("POST", "/api/frontlight/brightness"),  # ?b=
+    "auto_update": ("POST", "/api/firmware/auto_update"),
+    "upload_firmware": ("POST", "/upload/firmware"),
+    "upload_webui": ("POST", "/upload/webui"),
 }
 
 PATHS: Final[dict[ApiVariant, dict[str, PathEntry]]] = {

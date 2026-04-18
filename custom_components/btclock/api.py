@@ -155,6 +155,16 @@ class BtclockClient:
         self._require_v3_4("show_currency")
         await self._request_key("show_currency", params={"c": code}, expect_json=False)
 
+    async def async_show_text(self, text: str) -> None:
+        """Display `text` across all screens, one character per screen."""
+        self._require_v3_4("show_text")
+        await self._request_key("show_text", params={"t": text}, expect_json=False)
+
+    async def async_show_custom(self, screens: list[str]) -> None:
+        """Display one string per screen (array body, clamped to numScreens)."""
+        self._require_v3_4("show_custom")
+        await self._request_key("show_custom", json_body=screens, expect_json=False)
+
     # ---- LEDs -------------------------------------------------------------------
 
     async def async_get_lights(self) -> list[LedDict]:
@@ -211,6 +221,23 @@ class BtclockClient:
             "frontlight_bright", params={"b": value}, expect_json=False
         )
 
+    # ---- OTA / firmware update (3.4.0 only) -------------------------------------
+
+    async def async_auto_update_firmware(self) -> None:
+        """Kick the device's own OTA downloader; it reboots into the new image."""
+        self._require_v3_4("auto_update")
+        await self._request_key("auto_update", expect_json=False)
+
+    async def async_upload_firmware(self, data: bytes, filename: str) -> None:
+        """Multipart upload of the firmware partition image."""
+        self._require_v3_4("upload_firmware")
+        await self._upload_key("upload_firmware", data, filename, field="firmware")
+
+    async def async_upload_webui(self, data: bytes, filename: str) -> None:
+        """Multipart upload of the LittleFS webUI image."""
+        self._require_v3_4("upload_webui")
+        await self._upload_key("upload_webui", data, filename, field="webui")
+
     # ---- Internals --------------------------------------------------------------
 
     def _require_v3_4(self, key: str) -> None:
@@ -248,6 +275,34 @@ class BtclockClient:
         return await self._request(
             method, url, params=params, json_body=json_body, expect_json=expect_json
         )
+
+    async def _upload_key(
+        self, key: str, data: bytes, filename: str, *, field: str
+    ) -> None:
+        """POST a binary blob to an /upload endpoint as multipart form-data.
+
+        Generous 120s timeout — the device erases + writes the flash partition
+        inline during the upload, which can take a while on larger images.
+        """
+        variant = self._variant or ApiVariant.V3_4
+        method, template = PATHS[variant][key]
+        url = f"http://{self._host}{template}"
+        form = aiohttp.FormData()
+        form.add_field(
+            field, data, filename=filename, content_type="application/octet-stream"
+        )
+        try:
+            async with asyncio.timeout(120):
+                resp = await self._session.request(
+                    method, url, data=form, auth=self._auth
+                )
+                if resp.status in (401, 403):
+                    raise BtclockAuthError(f"Authentication required for {url}")
+                resp.raise_for_status()
+        except TimeoutError as err:
+            raise BtclockCommunicationError(f"Timeout uploading to {url}") from err
+        except (aiohttp.ClientError, socket.gaierror) as err:
+            raise BtclockCommunicationError(f"Error uploading to {url}: {err}") from err
 
     async def _request(
         self,

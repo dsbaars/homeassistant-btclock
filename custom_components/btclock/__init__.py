@@ -19,14 +19,17 @@ from .api import (
     BtclockCommunicationError,
 )
 from .coordinator import BtclockCoordinator
+from .services import async_register_services
 
 PLATFORMS: list[Platform] = [
     Platform.BINARY_SENSOR,
     Platform.BUTTON,
     Platform.LIGHT,
+    Platform.NUMBER,
     Platform.SELECT,
     Platform.SENSOR,
     Platform.SWITCH,
+    Platform.UPDATE,
 ]
 
 type BtclockConfigEntry = ConfigEntry[BtclockCoordinator]
@@ -55,6 +58,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: BtclockConfigEntry) -> b
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     await coordinator.async_start()
+    await async_register_services(hass)
 
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     return True

@@ -121,7 +121,10 @@ class Settings(TypedDict, total=False):
     nostrZapNotify: bool
     ledFlashOnZap: bool
     ledFlashOnUpd: bool
+    ledBrightness: int
+    disableLeds: bool
     stealFocus: bool
+    gitReleaseUrl: str
 
 
 class SystemStatus(TypedDict, total=False):

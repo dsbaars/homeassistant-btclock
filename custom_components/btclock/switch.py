@@ -114,6 +114,12 @@ SETTINGS_SWITCHES: tuple[BtclockSettingsSwitchDescription, ...] = (
         icon="mdi:target",
         setting_key="stealFocus",
     ),
+    BtclockSettingsSwitchDescription(
+        key="disable_leds",
+        translation_key="disable_leds",
+        icon="mdi:led-off",
+        setting_key="disableLeds",
+    ),
 )
 
 

@@ -1,0 +1,23 @@
+{
+  "total_commits": 2,
+  "commits": [
+    {
+      "url": "https://git.btclock.dev/api/v1/repos/btclock/btclock_v3/commits/4537acb73cb9ee1e82189b0b9e539fbb1d3b0c37",
+      "sha": "4537acb73cb9ee1e82189b0b9e539fbb1d3b0c37",
+      "created": "2026-04-17T11:51:00Z",
+      "commit": {
+        "message": "fix: remove exception-based parsing paths\n\nSwap the ad-hoc try/except for explicit tag-shape checks.\n",
+        "author": {"name": "Djuri Baars"}
+      }
+    },
+    {
+      "url": "https://git.btclock.dev/api/v1/repos/btclock/btclock_v3/commits/f5d6917192bd5b91038dc3d510b7a7649a6607d7",
+      "sha": "f5d6917192bd5b91038dc3d510b7a7649a6607d7",
+      "created": "2026-04-17T12:20:00Z",
+      "commit": {
+        "message": "feat: add notifyEventSourceStatus function to update web clients",
+        "author": {"name": "Djuri Baars"}
+      }
+    }
+  ]
+}

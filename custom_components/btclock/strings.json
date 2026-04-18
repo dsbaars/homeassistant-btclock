@@ -117,7 +117,44 @@
       "nostr_zap_notify":  { "name": "Nostr Zap notifications" },
       "led_flash_on_zap":  { "name": "LED flash on Nostr Zap" },
       "led_flash_on_update": { "name": "LED flash on new block" },
-      "steal_focus":       { "name": "Steal focus on new block" }
+      "steal_focus":       { "name": "Steal focus on new block" },
+      "disable_leds":      { "name": "Disable LEDs" }
+    },
+    "number": {
+      "led_brightness": { "name": "LED brightness" }
+    },
+    "update": {
+      "firmware": { "name": "Firmware" }
+    }
+  },
+  "services": {
+    "show_text": {
+      "name": "Show text",
+      "description": "Display arbitrary text across the BTClock's screens (firmware 3.4.0+).",
+      "fields": {
+        "device_id": {
+          "name": "BTClock",
+          "description": "The BTClock device to target."
+        },
+        "text": {
+          "name": "Text",
+          "description": "Text to display. Truncated to the device's number of screens; characters are auto-uppercased."
+        }
+      }
+    },
+    "show_custom": {
+      "name": "Show custom screens",
+      "description": "Display one string per screen (firmware 3.4.0+).",
+      "fields": {
+        "device_id": {
+          "name": "BTClock",
+          "description": "The BTClock device to target."
+        },
+        "screens": {
+          "name": "Screens",
+          "description": "One string per screen. Clamped to the device's number of screens."
+        }
+      }
     }
   }
 }
