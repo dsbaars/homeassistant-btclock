@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <rect x="0" y="0" width="256" height="256" rx="48" ry="48" fill="#F7931A"/>
+  <text x="128" y="160" text-anchor="middle"
+        font-family="Ubuntu"
+        font-weight="500"
+        font-style="italic"
+        font-size="140"
+        fill="#FFFFFF"
+        letter-spacing="-2">BT</text>
+</svg>
