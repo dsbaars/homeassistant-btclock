@@ -68,6 +68,14 @@ _UPDATE_CHECK_INTERVAL = timedelta(hours=24)
 _RELEASE_FETCH_TIMEOUT = 15
 _BINARY_FETCH_TIMEOUT = 120
 
+# Post-install watchdog: how long to wait for the device to report a new
+# gitTag before giving up. Upper bound on the "Installing" progress bar.
+_INSTALL_WATCHDOG_TIMEOUT = 600  # 10 min
+# Small grace period after the install trigger so we don't hammer /api/settings
+# while the device is still in its pre-OTA idle state.
+_INSTALL_WATCHDOG_GRACE = 10  # s
+_INSTALL_WATCHDOG_POLL = 10  # s between settings re-reads
+
 
 def _is_real_version(tag: str | None) -> bool:
     """Only semver tags like '3.3.19' count — skip commit hashes and '.dev' builds."""
@@ -177,6 +185,12 @@ class BtclockUpdate(BtclockEntity, UpdateEntity):
         super().__init__(device)
         self._release = release_coordinator
         self._attr_unique_id = f"{device.config_entry.entry_id}_firmware"
+        # Set while a user-initiated install is running; cleared by the
+        # watchdog once the device reports a different gitTag, or on
+        # timeout. Keeps the progress bar visible across the device's
+        # reboot window (when SSE is disconnected and isOTAUpdating is
+        # stale).
+        self._install_task: asyncio.Task[None] | None = None
 
     async def async_added_to_hass(self) -> None:
         """Subscribe to both the device coordinator and the release coordinator."""
@@ -184,6 +198,11 @@ class BtclockUpdate(BtclockEntity, UpdateEntity):
         self.async_on_remove(
             self._release.async_add_listener(self.async_write_ha_state)
         )
+
+    async def async_will_remove_from_hass(self) -> None:
+        if self._install_task and not self._install_task.done():
+            self._install_task.cancel()
+        await super().async_will_remove_from_hass()
 
     @property
     def installed_version(self) -> str | None:
@@ -203,6 +222,11 @@ class BtclockUpdate(BtclockEntity, UpdateEntity):
 
     @property
     def in_progress(self) -> bool:
+        # The install watchdog keeps this True across the reboot window even
+        # when `isOTAUpdating` has already flipped back to False (fresh SSE
+        # frame) before settings have been reloaded.
+        if self._install_task is not None and not self._install_task.done():
+            return True
         return bool(self.coordinator.data.get("isOTAUpdating"))
 
     async def async_release_notes(self) -> str | None:
@@ -219,11 +243,15 @@ class BtclockUpdate(BtclockEntity, UpdateEntity):
         release = self._release.data or {}
         latest = release.get("tag_name")
 
+        # Capture the pre-install tag so the watchdog can detect the reboot
+        # onto the new firmware by a gitTag change.
+        old_tag = client.settings.get("gitTag")
+
         # Default (version is None) or installing the latest: let the device
-        # do the work. One POST, one reboot — no bytes over the HA session.
+        # do the work. One request, one reboot — no bytes over the HA session.
         if version is None or version == latest:
             await client.async_auto_update_firmware()
-            await self.coordinator.async_request_refresh()
+            self._start_install_watchdog(old_tag)
             return
 
         # Targeted version install — we have to upload the matching binaries
@@ -285,7 +313,69 @@ class BtclockUpdate(BtclockEntity, UpdateEntity):
             littlefs_bytes = await _fetch_bytes(littlefs_url)
             await client.async_upload_webui(littlefs_bytes, littlefs_name)
 
-        await self.coordinator.async_request_refresh()
+        self._start_install_watchdog(old_tag)
+
+    def _start_install_watchdog(self, old_tag: str | None) -> None:
+        """Spawn the install-completion watchdog.
+
+        Flips `in_progress` off once the device reports a new gitTag (or
+        the watchdog times out).
+        """
+        if self._install_task is not None and not self._install_task.done():
+            # Already watching — don't stack tasks.
+            return
+        self._install_task = self.hass.async_create_task(self._watch_install(old_tag))
+        self.async_write_ha_state()
+
+    async def _watch_install(self, old_tag: str | None) -> None:
+        """Poll /api/settings until gitTag changes or the timeout expires.
+
+        This is more robust than relying on an `isOTAUpdating` True→False
+        transition because (a) the firmware doesn't push a status frame
+        when OTA starts, and (b) SSE disconnects across the reboot so the
+        transition can be missed entirely if the first post-reboot frame
+        has `isOTAUpdating=False`.
+        """
+        try:
+            # Give the device time to pick up the queued update and start
+            # writing flash before we start hammering /api/settings.
+            await asyncio.sleep(_INSTALL_WATCHDOG_GRACE)
+            deadline = self.hass.loop.time() + _INSTALL_WATCHDOG_TIMEOUT
+            client = self.coordinator.client
+            while self.hass.loop.time() < deadline:
+                try:
+                    settings = await client.async_load_settings()
+                except Exception:  # noqa: BLE001 — device unreachable during reboot
+                    # Absorb any error: the device is often mid-flash/reboot.
+                    await asyncio.sleep(_INSTALL_WATCHDOG_POLL)
+                    continue
+                if settings.get("gitTag") != old_tag:
+                    LOGGER.debug(
+                        "OTA completed on %s: %s → %s",
+                        client.host,
+                        old_tag,
+                        settings.get("gitTag"),
+                    )
+                    break
+                await asyncio.sleep(_INSTALL_WATCHDOG_POLL)
+            else:
+                LOGGER.warning(
+                    "OTA watchdog timed out on %s (still at %s)",
+                    client.host,
+                    old_tag,
+                )
+        except asyncio.CancelledError:
+            raise
+        finally:
+            # Clear the handle *before* writing state, so `in_progress`
+            # observes the task as finished (the property inspects
+            # `_install_task is not None and not _install_task.done()`,
+            # but the task is still technically running from inside its
+            # own finally).
+            self._install_task = None
+            self.async_write_ha_state()
+            # Installed version likely changed → re-evaluate "update available".
+            await self._release.async_request_refresh()
 
 
 async def async_setup_entry(

@@ -153,9 +153,14 @@ async def test_install_latest_calls_auto_update(
         release=load_fixture("release_latest"),
         compare=load_fixture("compare_318_319"),
     )
-    with patch.object(
-        BtclockClient, "async_auto_update_firmware", new=AsyncMock()
-    ) as mock_auto:
+    with (
+        patch.object(
+            BtclockClient, "async_auto_update_firmware", new=AsyncMock()
+        ) as mock_auto,
+        patch(
+            "custom_components.btclock.update.BtclockUpdate._start_install_watchdog",
+        ),
+    ):
         await hass.services.async_call(
             "update",
             "install",
@@ -203,6 +208,9 @@ async def test_install_specific_version_downloads_and_uploads(
         patch.object(
             BtclockClient, "async_auto_update_firmware", new=AsyncMock()
         ) as mock_auto,
+        patch(
+            "custom_components.btclock.update.BtclockUpdate._start_install_watchdog",
+        ),
     ):
         await hass.services.async_call(
             "update",
@@ -222,6 +230,96 @@ async def test_install_specific_version_downloads_and_uploads(
     assert fw_bytes == b"\xe9FIRMWARE"
     _, fs_name = mock_fs.await_args.args
     assert fs_name == "littlefs_8MB.bin"
+
+
+async def test_install_watchdog_clears_in_progress_on_version_bump(
+    hass: HomeAssistant, mock_aioresponse, load_fixture
+) -> None:
+    """Watchdog should flip `in_progress` False once gitTag changes."""
+    settings = load_fixture("settings_v3_4_revb").copy()
+    settings["gitTag"] = "3.3.18"  # device is "outdated" at setup
+    entry = await _setup(
+        hass,
+        mock_aioresponse,
+        settings,
+        load_fixture("status_v3_4_revb"),
+        release=load_fixture("release_latest"),
+        compare=load_fixture("compare_318_319"),
+    )
+
+    # Post-install: the device reboots into a new tag. First call returns
+    # the pre-reboot settings (simulating "device still at old tag"), every
+    # subsequent call returns the post-reboot settings.
+    new_settings = settings.copy()
+    new_settings["gitTag"] = "3.3.19"
+    call_count = {"n": 0}
+
+    async def _fake_load(self: BtclockClient) -> dict:
+        call_count["n"] += 1
+        value = settings if call_count["n"] == 1 else new_settings
+        self._settings = value  # noqa: SLF001
+        return value
+
+    with (
+        patch.object(BtclockClient, "async_auto_update_firmware", new=AsyncMock()),
+        patch.object(BtclockClient, "async_load_settings", _fake_load),
+        patch("custom_components.btclock.update._INSTALL_WATCHDOG_GRACE", 0),
+        patch("custom_components.btclock.update._INSTALL_WATCHDOG_POLL", 0),
+    ):
+        await hass.services.async_call(
+            "update",
+            "install",
+            {"entity_id": "update.btclock_9d5530_firmware"},
+            blocking=True,
+        )
+        # Let the watchdog task run.
+        await hass.async_block_till_done()
+
+    state = hass.states.get("update.btclock_9d5530_firmware")
+    assert state is not None
+    assert state.attributes["in_progress"] is False
+    assert state.attributes["installed_version"] == "3.3.19"
+    _ = entry
+
+
+async def test_install_watchdog_times_out(
+    hass: HomeAssistant, mock_aioresponse, load_fixture
+) -> None:
+    """Watchdog gives up after the timeout even if gitTag never changes."""
+    entry = await _setup(
+        hass,
+        mock_aioresponse,
+        load_fixture("settings_v3_4_revb"),
+        load_fixture("status_v3_4_revb"),
+        release=load_fixture("release_latest"),
+        compare=load_fixture("compare_318_319"),
+    )
+
+    settings_snapshot = load_fixture("settings_v3_4_revb").copy()
+
+    async def _fake_load(self: BtclockClient) -> dict:
+        self._settings = settings_snapshot  # noqa: SLF001
+        return settings_snapshot
+
+    with (
+        patch.object(BtclockClient, "async_auto_update_firmware", new=AsyncMock()),
+        patch.object(BtclockClient, "async_load_settings", _fake_load),
+        patch("custom_components.btclock.update._INSTALL_WATCHDOG_GRACE", 0),
+        patch("custom_components.btclock.update._INSTALL_WATCHDOG_POLL", 0),
+        patch("custom_components.btclock.update._INSTALL_WATCHDOG_TIMEOUT", 0.05),
+    ):
+        await hass.services.async_call(
+            "update",
+            "install",
+            {"entity_id": "update.btclock_9d5530_firmware"},
+            blocking=True,
+        )
+        await hass.async_block_till_done()
+
+    state = hass.states.get("update.btclock_9d5530_firmware")
+    assert state is not None
+    assert state.attributes["in_progress"] is False
+    _ = entry
 
 
 async def test_release_notes_fall_back_to_compare_commits(
