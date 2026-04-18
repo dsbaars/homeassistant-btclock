@@ -77,32 +77,10 @@ class BtclockLed(BtclockEntity, LightEntity):
         rgb = kwargs.get(ATTR_RGB_COLOR) or self.rgb_color or (255, 255, 255)
         if rgb == (0, 0, 0):
             rgb = (255, 255, 255)
-        await self._write_color(rgb)
+        await self.coordinator.async_set_led(self._index, rgb)
 
     async def async_turn_off(self, **_: Any) -> None:
-        await self._write_color((0, 0, 0))
-
-    async def _write_color(self, rgb: tuple[int, int, int]) -> None:
-        leds = list(self.coordinator.data.get("leds") or [])
-        if self._index >= len(leds):
-            return
-        hex_code = "#{:02X}{:02X}{:02X}".format(*rgb)
-        # Body we POST — `hex` keys only, per the swagger.
-        payload: list[LedDict] = [{"hex": led.get("hex", _OFF_HEX)} for led in leds]
-        payload[self._index] = {"hex": hex_code}
-        await self.coordinator.client.async_set_lights(payload)
-        # Optimistically update the cached state so the UI reflects the click
-        # without waiting for an SSE/poll round-trip. Any drift (e.g. firmware
-        # overwriting the LED for its own reasons) is corrected on the next
-        # authoritative frame.
-        optimistic = [dict(led) for led in leds]
-        optimistic[self._index] = {
-            "hex": hex_code,
-            "red": rgb[0],
-            "green": rgb[1],
-            "blue": rgb[2],
-        }
-        self.coordinator.async_apply_optimistic({"leds": optimistic})
+        await self.coordinator.async_set_led(self._index, (0, 0, 0))
 
 
 class BtclockFrontlight(BtclockEntity, LightEntity):

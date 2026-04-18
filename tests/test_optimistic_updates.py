@@ -136,6 +136,66 @@ async def test_timer_switch_optimistic(hass: HomeAssistant, load_fixture) -> Non
     assert coord.data["timerRunning"] is True
 
 
+async def test_staggered_led_toggles_accumulate(
+    hass: HomeAssistant, load_fixture, status_leds_off
+) -> None:
+    """Rapidly flipping LEDs 1→2→3→4 must end with all four set — no clobbering.
+
+    The BTClock LED API overwrites the full 4-element array on every POST, so
+    concurrent `_write_color` calls race unless the coordinator serializes
+    them. This asserts the lock path: final coordinator.data has all four
+    LEDs coloured, and each POST carried the cumulative payload.
+    """
+    import asyncio
+
+    entry = await _setup(hass, load_fixture("settings_v3_4_revb"), status_leds_off)
+    coord = entry.runtime_data
+
+    colors = [[255, 0, 0], [0, 255, 0], [0, 0, 255], [255, 255, 0]]
+    expected_hex = ["#FF0000", "#00FF00", "#0000FF", "#FFFF00"]
+
+    sent_payloads: list[list[dict]] = []
+
+    async def _fake_post(self_client, leds):  # noqa: ARG001
+        # Mimic the real device's ~260 ms POST latency so two calls overlap
+        # in time — if the lock doesn't hold, call B will have read state
+        # before call A's optimistic updates.
+        sent_payloads.append([dict(led) for led in leds])
+        await asyncio.sleep(0.15)
+
+    with patch.object(BtclockClient, "async_set_lights", new=_fake_post):
+
+        async def _toggle(i: int, rgb: list[int]) -> None:
+            await hass.services.async_call(
+                "light",
+                "turn_on",
+                {"entity_id": f"light.btclock_9d5530_led_{i + 1}", "rgb_color": rgb},
+                blocking=True,
+            )
+
+        # Fire all four within 150 ms (less than one POST's latency), so they
+        # would all be in flight concurrently without the lock.
+        tasks = []
+        for i, rgb in enumerate(colors):
+            tasks.append(hass.async_create_task(_toggle(i, rgb)))
+            await asyncio.sleep(0.05)
+        await asyncio.gather(*tasks)
+
+    # All four LEDs end up coloured.
+    final = coord.data["leds"]
+    assert [led["hex"] for led in final] == expected_hex
+
+    # Each successive POST carried the accumulated state: the i-th call
+    # must contain LEDs 0..i coloured and i+1..3 still off.
+    assert len(sent_payloads) == 4
+    for i, payload in enumerate(sent_payloads):
+        for j in range(4):
+            expected = expected_hex[j] if j <= i else "#000000"
+            assert payload[j]["hex"] == expected, (
+                f"call {i} LED {j}: expected {expected}, got {payload[j]['hex']}"
+            )
+
+
 async def test_screen_select_optimistic(hass: HomeAssistant, load_fixture) -> None:
     status = load_fixture("status_v3_4_revb").copy()
     status["currentScreen"] = 0

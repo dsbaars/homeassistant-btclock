@@ -70,6 +70,11 @@ class BtclockCoordinator(DataUpdateCoordinator[Status]):
         self._mode = mode
         self._stream: BtclockEventStream | None = None
         self._stream_task: asyncio.Task[None] | None = None
+        # LED writes are array-based: every POST sends the full 4-element array.
+        # Serialize with this lock so concurrent `async_set_led` calls chain
+        # their mutations through the same in-memory state instead of racing
+        # on stale views of `coordinator.data`.
+        self._leds_lock = asyncio.Lock()
 
     @property
     def update_mode(self) -> str:
@@ -125,6 +130,31 @@ class BtclockCoordinator(DataUpdateCoordinator[Status]):
         """
         merged: Status = {**(self.data or {}), **patch}
         self.async_set_updated_data(merged)
+
+    async def async_set_led(self, index: int, rgb: tuple[int, int, int]) -> None:
+        """Atomically change one LED on the device + in coordinator.data.
+
+        Held under `_leds_lock` so back-to-back calls (e.g. the user tapping
+        four LED tiles in quick succession) serialize cleanly: each call
+        sees the previous call's optimistic update and carries all the
+        accumulated colors in its POST payload.
+        """
+        async with self._leds_lock:
+            leds = list(self.data.get("leds") or [])
+            if index >= len(leds):
+                return
+            hex_code = "#{:02X}{:02X}{:02X}".format(*rgb)
+            payload = [{"hex": led.get("hex", "#000000")} for led in leds]
+            payload[index] = {"hex": hex_code}
+            await self.client.async_set_lights(payload)
+            optimistic = [dict(led) for led in leds]
+            optimistic[index] = {
+                "hex": hex_code,
+                "red": rgb[0],
+                "green": rgb[1],
+                "blue": rgb[2],
+            }
+            self.async_apply_optimistic({"leds": optimistic})
 
     # ---- Settings patch + reload ------------------------------------------
 
