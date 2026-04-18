@@ -41,8 +41,10 @@ If the BTClock has `httpAuthEnabled` turned on, the config flow will prompt for 
 
 ## Installation via HACS
 
+HACS currently only accepts GitHub repositories, so use the GitHub mirror — the git.btclock.dev Forgejo instance won't work.
+
 1. Open HACS → Integrations → menu → **Custom repositories**.
-2. Add `https://git.btclock.dev/btclock/homeassistant-btclock` with category **Integration**.
+2. Add `https://github.com/dsbaars/homeassistant-btclock` with category **Integration**.
 3. Install "BTClock Integration" and restart Home Assistant.
 4. **Settings → Devices & Services → Add Integration → BTClock**, or accept the auto-discovered zeroconf prompt.
 
