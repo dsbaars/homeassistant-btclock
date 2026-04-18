@@ -100,6 +100,23 @@ async def test_legacy_lights_off_uses_get(mock_aioresponse, legacy_client) -> No
     await legacy_client.async_lights_off()
 
 
+# ---- OTA (variant-dispatched) ----------------------------------------------
+
+
+async def test_legacy_auto_update_uses_get(mock_aioresponse, legacy_client) -> None:
+    """Firmware 3.3.x exposes /api/firmware/auto_update as GET, not POST.
+
+    Live-verified on 192.168.20.253 (3.3.19) — POST returns 404, GET 200.
+    """
+    _expect(mock_aioresponse, "GET", rf"^http://{HOST}/api/firmware/auto_update")
+    await legacy_client.async_auto_update_firmware()
+
+
+async def test_v3_4_auto_update_uses_post(mock_aioresponse, v3_4_client) -> None:
+    _expect(mock_aioresponse, "POST", rf"^http://{HOST}/api/firmware/auto_update")
+    await v3_4_client.async_auto_update_firmware()
+
+
 async def test_v3_4_lights_off_uses_post(mock_aioresponse, v3_4_client) -> None:
     _expect(mock_aioresponse, "POST", rf"^http://{HOST}/api/lights/off")
     await v3_4_client.async_lights_off()

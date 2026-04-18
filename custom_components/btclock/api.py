@@ -221,21 +221,22 @@ class BtclockClient:
             "frontlight_bright", params={"b": value}, expect_json=False
         )
 
-    # ---- OTA / firmware update (3.4.0 only) -------------------------------------
+    # ---- OTA / firmware update (variant-dispatched) -----------------------------
 
     async def async_auto_update_firmware(self) -> None:
-        """Kick the device's own OTA downloader; it reboots into the new image."""
-        self._require_v3_4("auto_update")
+        """Kick the device's own OTA downloader; it reboots into the new image.
+
+        Legacy firmware serves this over GET; 3.4.0+ over POST — handled by
+        the path tables.
+        """
         await self._request_key("auto_update", expect_json=False)
 
     async def async_upload_firmware(self, data: bytes, filename: str) -> None:
         """Multipart upload of the firmware partition image."""
-        self._require_v3_4("upload_firmware")
         await self._upload_key("upload_firmware", data, filename, field="firmware")
 
     async def async_upload_webui(self, data: bytes, filename: str) -> None:
         """Multipart upload of the LittleFS webUI image."""
-        self._require_v3_4("upload_webui")
         await self._upload_key("upload_webui", data, filename, field="webui")
 
     # ---- Internals --------------------------------------------------------------
@@ -341,22 +342,28 @@ def detect_variant(settings: Settings) -> ApiVariant:
     """Pick the firmware variant from a `/api/settings` response.
 
     Strategy:
-      1. `gitTag` present and parses as semver ≥ 3.4.0 → V3_4.
-      2. `httpAuthPassSet` field present (added in 3.4.0) → V3_4.
-      3. `lastBuildTime` past the 3.4.0 build cutoff → V3_4.
+      1. `gitTag` is a real semver — trust it. `>= 3.4` → V3_4, else LEGACY.
+         (Observed in the wild: 3.3.19 builds from main already expose
+         `httpAuthPassSet`, yet still use GET on action routes — so we
+         must not let the fallbacks flip those to V3_4.)
+      2. No usable tag: `httpAuthPassSet` present → V3_4.
+      3. Still unknown: `lastBuildTime` past the 3.4.0 cutoff → V3_4.
       4. Otherwise LEGACY.
     """
     tag = str(settings.get("gitTag") or "").lstrip("v").strip()
-    if tag:
-        parts = tag.split(".")
-        try:
-            major = int(parts[0])
-            minor = int(parts[1]) if len(parts) > 1 else 0
-        except ValueError:
-            major = minor = 0
+    tag_parts = tag.split(".") if tag else []
+    try:
+        major = int(tag_parts[0]) if tag_parts else None
+        minor = int(tag_parts[1]) if len(tag_parts) > 1 else 0
+    except ValueError:
+        major = minor = None
+
+    if major is not None:
         if (major, minor) >= (3, 4):
             LOGGER.debug("Detected V3_4 via gitTag=%s", tag)
             return ApiVariant.V3_4
+        LOGGER.debug("Detected LEGACY via gitTag=%s", tag)
+        return ApiVariant.LEGACY
 
     if "httpAuthPassSet" in settings:
         LOGGER.debug("Detected V3_4 via httpAuthPassSet field")

@@ -15,6 +15,8 @@
   "mempoolInstance": "mempool.space",
   "mempoolSecure": true,
   "ledBrightness": 128,
+  "disableLeds": false,
+  "gitReleaseUrl": "https://git.btclock.dev/api/v1/repos/btclock/btclock_v3/releases/latest",
   "mdnsEnabled": true,
   "otaEnabled": true,
   "hasFrontlight": false,

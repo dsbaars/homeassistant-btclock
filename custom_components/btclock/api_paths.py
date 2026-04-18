@@ -55,6 +55,11 @@ LEGACY_PATHS: Final[dict[str, PathEntry]] = {
     "restart": ("GET", "/api/restart"),
     "full_refresh": ("GET", "/api/full_refresh"),
     "identify": ("GET", "/api/identify"),
+    # OTA — legacy firmware uses GET for auto_update and POST multipart for
+    # the upload endpoints (verified empirically on 3.3.19).
+    "auto_update": ("GET", "/api/firmware/auto_update"),
+    "upload_firmware": ("POST", "/upload/firmware"),
+    "upload_webui": ("POST", "/upload/webui"),
 }
 
 V3_4_PATHS: Final[dict[str, PathEntry]] = {

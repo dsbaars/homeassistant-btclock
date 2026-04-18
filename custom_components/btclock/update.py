@@ -41,7 +41,6 @@ from . import BtclockConfigEntry
 from .const import DOMAIN, LOGGER
 from .coordinator import BtclockCoordinator
 from .entity import BtclockEntity
-from .models import ApiVariant
 
 # Map the `hwRev` reported by the device (e.g. "REV_B_EPD_2_13") to the
 # PlatformIO env name used as the release-asset prefix. Keep in sync with
@@ -296,8 +295,6 @@ async def async_setup_entry(
 ) -> None:
     """Add one Update entity per BTClock running a real release."""
     device = entry.runtime_data
-    if device.client.variant is not ApiVariant.V3_4:
-        return
     installed = device.client.settings.get("gitTag")
     if not _is_real_version(installed):
         LOGGER.debug(
