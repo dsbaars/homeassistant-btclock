@@ -12,15 +12,18 @@ jobs:
   ruff:
     name: "Ruff"
     runs-on: "ubuntu-latest"
-    # Forgejo's act_runner can't always resolve actions/setup-python's version
-    # manifest, so skip it and run inside a python image that already has 3.14.
-    # The full `python:3.14` image (Debian bookworm) is required instead of
-    # `-slim`, because `-slim` omits git and actions/checkout needs it.
+    # actions/checkout is a Node action; Forgejo's act_runner doesn't inject
+    # a Node runtime into custom containers, so checkout fails inside
+    # python-only images. Clone manually via git (which ships in this image).
     container:
       image: "python:3.14"
     steps:
       - name: "Checkout the repository"
-        uses: "actions/checkout@v4"
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git clone --depth=1 "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git" .
+          git fetch --depth=1 origin "$GITHUB_SHA"
+          git checkout "$GITHUB_SHA"
 
       - name: "Install ruff"
         run: |
