@@ -12,10 +12,10 @@ jobs:
   pytest:
     name: "Pytest"
     runs-on: "ubuntu-latest"
-    # See .forgejo/workflows/lint.yml — actions/setup-python is unreliable on
-    # Forgejo's runner, so pull Python from its official image instead.
+    # See .forgejo/workflows/lint.yml for why we use the full python:3.14
+    # container image instead of the setup-python action.
     container:
-      image: "python:3.14-slim"
+      image: "python:3.14"
     steps:
       - name: "Checkout the repository"
         uses: "actions/checkout@v4"

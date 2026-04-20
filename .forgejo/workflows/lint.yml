@@ -13,9 +13,11 @@ jobs:
     name: "Ruff"
     runs-on: "ubuntu-latest"
     # Forgejo's act_runner can't always resolve actions/setup-python's version
-    # manifest, so skip it and run in a python image that already has 3.14.
+    # manifest, so skip it and run inside a python image that already has 3.14.
+    # The full `python:3.14` image (Debian bookworm) is required instead of
+    # `-slim`, because `-slim` omits git and actions/checkout needs it.
     container:
-      image: "python:3.14-slim"
+      image: "python:3.14"
     steps:
       - name: "Checkout the repository"
         uses: "actions/checkout@v4"
