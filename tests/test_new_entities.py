@@ -123,6 +123,44 @@ async def test_screen_select_lists_all_screens_enabled_or_not(
     assert len(options) == len(settings["screens"])
 
 
+async def test_screen_select_respects_rotation_order(
+    hass: HomeAssistant, load_fixture
+) -> None:
+    """Firmware 3.4.1+ emits an explicit `order` field — the dropdown must
+    list screens in that order, independent of the JSON array position."""
+    settings = load_fixture("settings_v3_4_revb").copy()
+    # Shuffle array position AND use non-monotonic order values. Expected
+    # dropdown ordering is by `order`, not by array index.
+    settings["screens"] = [
+        {"id": 0, "name": "Block Height", "enabled": True, "order": 2},
+        {"id": 70, "name": "Mining Pool Hashrate", "enabled": True, "order": 0},
+        {"id": 20, "name": "Ticker", "enabled": True, "order": 1},
+        {"id": 4, "name": "Halving countdown", "enabled": False, "order": 3},
+    ]
+    await _setup(hass, settings, load_fixture("status_v3_4_revb"))
+
+    state = hass.states.get("select.btclock_9d5530_screen")
+    assert state is not None
+    assert state.attributes["options"] == [
+        "Mining Pool Hashrate",
+        "Ticker",
+        "Block Height",
+        "Halving countdown",
+    ]
+
+
+async def test_screen_select_falls_back_to_array_order_without_order_field(
+    hass: HomeAssistant, load_fixture
+) -> None:
+    """Legacy-style fixture has no `order` — preserve array order."""
+    settings = load_fixture("settings_v3_4_revb")
+    await _setup(hass, settings, load_fixture("status_v3_4_revb"))
+
+    state = hass.states.get("select.btclock_9d5530_screen")
+    assert state is not None
+    assert state.attributes["options"] == [s["name"] for s in settings["screens"]]
+
+
 async def test_settings_switches_appear_with_current_state(
     hass: HomeAssistant, load_fixture
 ) -> None:

@@ -86,6 +86,7 @@ class Screen(TypedDict, total=False):
     id: int
     name: str
     enabled: bool  # 3.4.0 only; legacy has no `enabled`
+    order: int  # 3.4.1+ rotation order; older firmware omits it
 
 
 class Settings(TypedDict, total=False):

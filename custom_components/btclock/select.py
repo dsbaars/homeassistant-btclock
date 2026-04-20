@@ -36,14 +36,22 @@ class BtclockScreenSelect(BtclockEntity, SelectEntity):
         self._attr_unique_id = f"{coordinator.config_entry.entry_id}_screen"
 
     def _screens(self) -> list[dict]:
-        """All screens, enabled or not.
+        """All screens, enabled or not, in the device's rotation order.
 
         The firmware lets a client switch to any screen via
         POST /api/show/screen regardless of its `enabled` flag — that only
         controls whether the screen appears in auto-rotation
         (src/lib/ui/screen_handler.cpp:148). So we expose the full list.
+
+        Firmware ≥3.4 emits an explicit `order` int per screen for the
+        user-configured rotation order; when present we sort by it so the
+        dropdown matches what the device actually rotates through. Older
+        firmware omits the field — fall back to array order.
         """
-        return list(self.coordinator.client.settings.get("screens") or [])
+        screens = list(self.coordinator.client.settings.get("screens") or [])
+        if screens and all("order" in s for s in screens):
+            screens.sort(key=lambda s: s["order"])
+        return screens
 
     @property
     def options(self) -> list[str]:
