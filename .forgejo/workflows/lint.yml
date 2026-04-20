@@ -11,19 +11,19 @@ on:
 jobs:
   ruff:
     name: "Ruff"
-    runs-on: "ubuntu-latest"
-    # actions/checkout is a Node action; Forgejo's act_runner doesn't inject
-    # a Node runtime into custom containers, so checkout fails inside
-    # python-only images. Clone manually via git (which ships in this image).
+    runs-on: docker
+    # catthehacker's js-24.04 image is what the btclock_v3 CI uses on this
+    # Forgejo instance — it ships Node + git so actions/checkout works, and
+    # leaves Python to setup-python.
     container:
-      image: "python:3.14"
+      image: "ghcr.io/catthehacker/ubuntu:js-24.04"
     steps:
-      - name: "Checkout the repository"
-        run: |
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          git clone --depth=1 "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git" .
-          git fetch --depth=1 origin "$GITHUB_SHA"
-          git checkout "$GITHUB_SHA"
+      - uses: "actions/checkout@v6"
+
+      - uses: "actions/setup-python@v6"
+        with:
+          python-version: "3.14"
+          cache: "pip"
 
       - name: "Install ruff"
         run: |
