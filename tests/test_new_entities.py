@@ -204,3 +204,129 @@ async def test_settings_switch_toggle_calls_patch(
         )
 
     patch_mock.assert_awaited_once_with({"nostrZapNotify": True})
+
+
+async def test_dnd_schedule_entities_expose_values(
+    hass: HomeAssistant, load_fixture
+) -> None:
+    """Scheduled-DND switch + start/end time entities read settings.dnd.*."""
+    settings = load_fixture("settings_v3_4_revb").copy()
+    settings["dnd"] = {
+        "enabled": False,
+        "dndTimeEnabled": True,
+        "startHour": 23,
+        "startMinute": 0,
+        "endHour": 7,
+        "endMinute": 30,
+    }
+    await _setup(hass, settings, load_fixture("status_v3_4_revb"))
+
+    assert (
+        hass.states.get("switch.btclock_9d5530_scheduled_do_not_disturb").state == "on"
+    )
+    assert (
+        hass.states.get("time.btclock_9d5530_do_not_disturb_start").state == "23:00:00"
+    )
+    assert (
+        hass.states.get("time.btclock_9d5530_do_not_disturb_end").state == "07:30:00"
+    )
+
+
+async def test_dnd_time_enabled_switch_patches_nested_dnd(
+    hass: HomeAssistant, load_fixture
+) -> None:
+    """Toggling the schedule switch must PATCH {"dnd": {..., dndTimeEnabled}}
+    carrying the existing schedule fields so the coordinator's shallow merge
+    doesn't clobber startHour/endHour in the optimistic cache."""
+    settings = load_fixture("settings_v3_4_revb").copy()
+    settings["dnd"] = {
+        "enabled": False,
+        "dndTimeEnabled": False,
+        "startHour": 22,
+        "startMinute": 30,
+        "endHour": 7,
+        "endMinute": 0,
+    }
+    await _setup(hass, settings, load_fixture("status_v3_4_revb"))
+
+    with (
+        patch.object(
+            BtclockClient, "async_patch_settings", new=AsyncMock()
+        ) as patch_mock,
+        patch.object(
+            BtclockClient, "async_load_settings", new=AsyncMock(return_value=settings)
+        ),
+        patch.object(
+            BtclockClient, "async_update_status", new=AsyncMock(return_value={})
+        ),
+    ):
+        await hass.services.async_call(
+            "switch",
+            "turn_on",
+            {"entity_id": "switch.btclock_9d5530_scheduled_do_not_disturb"},
+            blocking=True,
+        )
+
+    patch_mock.assert_awaited_once_with(
+        {
+            "dnd": {
+                "enabled": False,
+                "dndTimeEnabled": True,
+                "startHour": 22,
+                "startMinute": 30,
+                "endHour": 7,
+                "endMinute": 0,
+            }
+        }
+    )
+
+
+async def test_dnd_start_time_patches_all_four_fields(
+    hass: HomeAssistant, load_fixture
+) -> None:
+    """Firmware requires every start/end field in one PATCH; editing just
+    the start time must still carry the untouched end fields verbatim."""
+    settings = load_fixture("settings_v3_4_revb").copy()
+    settings["dnd"] = {
+        "enabled": False,
+        "dndTimeEnabled": True,
+        "startHour": 22,
+        "startMinute": 30,
+        "endHour": 7,
+        "endMinute": 0,
+    }
+    await _setup(hass, settings, load_fixture("status_v3_4_revb"))
+
+    with (
+        patch.object(
+            BtclockClient, "async_patch_settings", new=AsyncMock()
+        ) as patch_mock,
+        patch.object(
+            BtclockClient, "async_load_settings", new=AsyncMock(return_value=settings)
+        ),
+        patch.object(
+            BtclockClient, "async_update_status", new=AsyncMock(return_value={})
+        ),
+    ):
+        await hass.services.async_call(
+            "time",
+            "set_value",
+            {
+                "entity_id": "time.btclock_9d5530_do_not_disturb_start",
+                "time": "23:15:00",
+            },
+            blocking=True,
+        )
+
+    patch_mock.assert_awaited_once_with(
+        {
+            "dnd": {
+                "enabled": False,
+                "dndTimeEnabled": True,
+                "startHour": 23,
+                "startMinute": 15,
+                "endHour": 7,
+                "endMinute": 0,
+            }
+        }
+    )

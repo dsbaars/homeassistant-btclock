@@ -114,11 +114,16 @@
     "switch": {
       "timer":             { "name": "Screen timer" },
       "dnd":               { "name": "Do-not-disturb" },
+      "dnd_time_enabled":  { "name": "Scheduled do-not-disturb" },
       "nostr_zap_notify":  { "name": "Nostr Zap notifications" },
       "led_flash_on_zap":  { "name": "LED flash on Nostr Zap" },
       "led_flash_on_update": { "name": "LED flash on new block" },
       "steal_focus":       { "name": "Steal focus on new block" },
       "disable_leds":      { "name": "Disable LEDs" }
+    },
+    "time": {
+      "dnd_start": { "name": "Do-not-disturb start" },
+      "dnd_end":   { "name": "Do-not-disturb end" }
     },
     "number": {
       "led_brightness": { "name": "LED brightness" }

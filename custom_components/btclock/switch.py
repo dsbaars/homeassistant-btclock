@@ -31,10 +31,20 @@ async def async_setup_entry(
     entities: list[SwitchEntity] = [BtclockTimerSwitch(coordinator)]
     if coordinator.client.variant is ApiVariant.V3_4:
         entities.append(BtclockDndSwitch(coordinator))
+        entities.append(BtclockDndTimeEnabledSwitch(coordinator))
     entities.extend(
         BtclockSettingsSwitch(coordinator, desc) for desc in SETTINGS_SWITCHES
     )
     async_add_entities(entities)
+
+
+def merged_dnd_patch(coordinator: BtclockCoordinator, **changes: Any) -> dict:
+    """Build a {"dnd": {...}} PATCH body carrying every existing dnd field
+    plus the supplied changes. The coordinator's top-level settings merge
+    would otherwise clobber unspecified dnd keys in the optimistic cache."""
+    current = dict(coordinator.client.settings.get("dnd") or {})
+    current.update(changes)
+    return {"dnd": current}
 
 
 class BtclockTimerSwitch(BtclockEntity, SwitchEntity):
@@ -93,6 +103,32 @@ class BtclockDndSwitch(BtclockEntity, SwitchEntity):
         dnd["enabled"] = False
         dnd["active"] = False
         self.coordinator.async_apply_optimistic({"dnd": dnd})
+
+
+class BtclockDndTimeEnabledSwitch(BtclockEntity, SwitchEntity):
+    """Toggles the scheduled quiet-hours feature (settings.dnd.dndTimeEnabled)."""
+
+    _attr_translation_key = "dnd_time_enabled"
+    _attr_icon = "mdi:clock-outline"
+
+    def __init__(self, coordinator: BtclockCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.config_entry.entry_id}_dnd_time_enabled"
+
+    @property
+    def is_on(self) -> bool | None:
+        cfg = self.coordinator.client.settings.get("dnd") or {}
+        return cfg.get("dndTimeEnabled")
+
+    async def async_turn_on(self, **_: Any) -> None:
+        await self.coordinator.async_patch_settings(
+            merged_dnd_patch(self.coordinator, dndTimeEnabled=True)
+        )
+
+    async def async_turn_off(self, **_: Any) -> None:
+        await self.coordinator.async_patch_settings(
+            merged_dnd_patch(self.coordinator, dndTimeEnabled=False)
+        )
 
 
 def _schedule_covers_now(coordinator: BtclockCoordinator) -> bool:

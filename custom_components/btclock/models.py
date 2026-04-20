@@ -89,6 +89,18 @@ class Screen(TypedDict, total=False):
     order: int  # 3.4.1+ rotation order; older firmware omits it
 
 
+class DndSettings(TypedDict, total=False):
+    """settings.dnd block (3.4.0+). Distinct from DndStatus: this one holds
+    the schedule configuration, not the runtime flags."""
+
+    enabled: bool
+    dndTimeEnabled: bool
+    startHour: int
+    startMinute: int
+    endHour: int
+    endMinute: int
+
+
 class Settings(TypedDict, total=False):
     """Subset of GET /api/settings that the integration reads.
 
@@ -126,6 +138,8 @@ class Settings(TypedDict, total=False):
     disableLeds: bool
     stealFocus: bool
     gitReleaseUrl: str
+    tzString: str
+    dnd: DndSettings
 
 
 class SystemStatus(TypedDict, total=False):
