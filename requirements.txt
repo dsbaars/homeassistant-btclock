@@ -1,4 +1,4 @@
-colorlog==6.9.0
+colorlog==6.10.1
 homeassistant==2026.4.3
 ruff==0.15.11
 zeroconf
