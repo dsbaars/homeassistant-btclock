@@ -65,9 +65,7 @@ class BtclockDndTime(BtclockEntity, TimeEntity):
     one the user edited.
     """
 
-    def __init__(
-        self, coordinator: BtclockCoordinator, spec: _DndTimeSpec
-    ) -> None:
+    def __init__(self, coordinator: BtclockCoordinator, spec: _DndTimeSpec) -> None:
         super().__init__(coordinator)
         self._spec = spec
         self._attr_translation_key = spec.translation_key

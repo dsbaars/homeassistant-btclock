@@ -227,9 +227,7 @@ async def test_dnd_schedule_entities_expose_values(
     assert (
         hass.states.get("time.btclock_9d5530_do_not_disturb_start").state == "23:00:00"
     )
-    assert (
-        hass.states.get("time.btclock_9d5530_do_not_disturb_end").state == "07:30:00"
-    )
+    assert hass.states.get("time.btclock_9d5530_do_not_disturb_end").state == "07:30:00"
 
 
 async def test_dnd_time_enabled_switch_patches_nested_dnd(
