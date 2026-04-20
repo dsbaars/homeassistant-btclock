@@ -39,9 +39,12 @@ async def async_setup_entry(
 
 
 def merged_dnd_patch(coordinator: BtclockCoordinator, **changes: Any) -> dict:
-    """Build a {"dnd": {...}} PATCH body carrying every existing dnd field
-    plus the supplied changes. The coordinator's top-level settings merge
-    would otherwise clobber unspecified dnd keys in the optimistic cache."""
+    """Build a ``{"dnd": {...}}`` PATCH body carrying every existing dnd field.
+
+    The supplied changes are overlaid on top. Without this, the coordinator's
+    top-level settings merge would clobber unspecified dnd keys in the
+    optimistic cache.
+    """
     current = dict(coordinator.client.settings.get("dnd") or {})
     current.update(changes)
     return {"dnd": current}
@@ -132,7 +135,7 @@ class BtclockDndTimeEnabledSwitch(BtclockEntity, SwitchEntity):
 
 
 def _schedule_covers_now(coordinator: BtclockCoordinator) -> bool:
-    """Is the device's DND quiet-hours window currently covering 'now'?
+    """Return True if the DND quiet-hours window currently covers 'now'.
 
     Uses the schedule fields from /api/settings (startHour/Minute,
     endHour/Minute) and the device's tzString. Handles overnight windows

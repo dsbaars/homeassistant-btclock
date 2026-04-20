@@ -90,8 +90,11 @@ class Screen(TypedDict, total=False):
 
 
 class DndSettings(TypedDict, total=False):
-    """settings.dnd block (3.4.0+). Distinct from DndStatus: this one holds
-    the schedule configuration, not the runtime flags."""
+    """settings.dnd block (3.4.0+).
+
+    Distinct from DndStatus: this one holds the schedule configuration,
+    not the runtime flags.
+    """
 
     enabled: bool
     dndTimeEnabled: bool

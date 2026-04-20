@@ -22,8 +22,9 @@ The variant is detected automatically from `GET /api/settings`.
 |-----------------|---------------------------------------------------------------------------|
 | `sensor`        | Current screen, currency, uptime, RSSI, free heap, ambient light level    |
 | `binary_sensor` | Price / blocks / V2 / nostr feed connectivity, screen timer, OTA, DND     |
-| `switch`        | Screen timer, Do-not-disturb (3.4.0+)                                     |
-| `select`        | Screen, currency (3.4.0+)                                                 |
+| `switch`        | Screen timer, Do-not-disturb, scheduled Do-not-disturb (3.4.0+)           |
+| `select`        | Screen (rotation-ordered on 3.4.1+), currency (3.4.0+)                    |
+| `time`          | Do-not-disturb schedule start / end (3.4.0+)                              |
 | `light`         | One entity per status LED, plus frontlight (when hardware present)        |
 | `number`        | LED brightness slider (0–255)                                             |
 | `button`        | Identify, restart, full refresh, next / previous screen, flash frontlight (3.4.0+) |
