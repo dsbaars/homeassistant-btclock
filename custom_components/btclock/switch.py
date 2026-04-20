@@ -4,13 +4,16 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime, time
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from homeassistant.components.switch import (
     SwitchEntity,
     SwitchEntityDescription,
 )
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import BtclockConfigEntry
@@ -65,20 +68,56 @@ class BtclockDndSwitch(BtclockEntity, SwitchEntity):
 
     @property
     def is_on(self) -> bool | None:
+        # Reflect the effective DND state: true when either the manual flag or
+        # the scheduled quiet-hours window is active on the device.
         dnd = self.coordinator.data.get("dnd") or {}
+        if "active" in dnd:
+            return dnd.get("active")
         return dnd.get("enabled")
 
     async def async_turn_on(self, **_: Any) -> None:
         await self.coordinator.client.async_dnd_enable()
         dnd = dict(self.coordinator.data.get("dnd") or {})
         dnd["enabled"] = True
+        dnd["active"] = True
         self.coordinator.async_apply_optimistic({"dnd": dnd})
 
     async def async_turn_off(self, **_: Any) -> None:
+        if _schedule_covers_now(self.coordinator):
+            raise HomeAssistantError(
+                "Do Not Disturb is held on by the scheduled quiet hours; "
+                "disable the DND schedule in the device settings to turn it off."
+            )
         await self.coordinator.client.async_dnd_disable()
         dnd = dict(self.coordinator.data.get("dnd") or {})
         dnd["enabled"] = False
+        dnd["active"] = False
         self.coordinator.async_apply_optimistic({"dnd": dnd})
+
+
+def _schedule_covers_now(coordinator: BtclockCoordinator) -> bool:
+    """Is the device's DND quiet-hours window currently covering 'now'?
+
+    Uses the schedule fields from /api/settings (startHour/Minute,
+    endHour/Minute) and the device's tzString. Handles overnight windows
+    where start > end (e.g. 23:00 → 07:00).
+    """
+    settings = coordinator.client.settings
+    cfg = settings.get("dnd") or {}
+    if not cfg.get("dndTimeEnabled"):
+        return False
+    try:
+        tz = ZoneInfo(settings.get("tzString") or "UTC")
+    except ZoneInfoNotFoundError:
+        tz = ZoneInfo("UTC")
+    now = datetime.now(tz).time()
+    start = time(int(cfg.get("startHour", 0)), int(cfg.get("startMinute", 0)))
+    end = time(int(cfg.get("endHour", 0)), int(cfg.get("endMinute", 0)))
+    if start == end:
+        return False
+    if start < end:
+        return start <= now < end
+    return now >= start or now < end
 
 
 @dataclass(frozen=True, kw_only=True)

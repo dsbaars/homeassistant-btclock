@@ -136,6 +136,119 @@ async def test_timer_switch_optimistic(hass: HomeAssistant, load_fixture) -> Non
     assert coord.data["timerRunning"] is True
 
 
+async def test_dnd_switch_reflects_active_state(
+    hass: HomeAssistant, load_fixture
+) -> None:
+    """Scheduled DND pushes status.dnd.active=true with enabled=false; the
+    switch must still show on, matching what the device is actually doing."""
+    settings = load_fixture("settings_v3_4_revb").copy()
+    settings["dnd"] = {
+        **settings["dnd"],
+        "dndTimeEnabled": True,
+        "startHour": 23,
+        "startMinute": 0,
+        "endHour": 7,
+        "endMinute": 0,
+    }
+    status = load_fixture("status_v3_4_dnd_active")
+    await _setup(hass, settings, status)
+
+    state = hass.states.get("switch.btclock_9d5530_do_not_disturb")
+    assert state is not None
+    assert state.state == "on"
+
+
+async def test_dnd_switch_turn_off_blocked_by_schedule(
+    hass: HomeAssistant, load_fixture
+) -> None:
+    """Inside the scheduled quiet window, turn_off would be a device no-op;
+    raise HomeAssistantError instead and don't touch the API."""
+    from datetime import datetime, time
+    from unittest.mock import MagicMock
+
+    from homeassistant.exceptions import HomeAssistantError
+
+    settings = load_fixture("settings_v3_4_revb").copy()
+    settings["tzString"] = "UTC0"
+    settings["dnd"] = {
+        **settings["dnd"],
+        "dndTimeEnabled": True,
+        "startHour": 23,
+        "startMinute": 0,
+        "endHour": 7,
+        "endMinute": 0,
+    }
+    status = load_fixture("status_v3_4_dnd_active")
+    entry = await _setup(hass, settings, status)
+    coord = entry.runtime_data
+
+    disable_mock = AsyncMock()
+    frozen_now = datetime(2026, 4, 20, 3, 30)  # inside 23:00 → 07:00 window
+    fake_dt = MagicMock(wraps=datetime)
+    fake_dt.now = MagicMock(return_value=frozen_now)
+
+    with (
+        patch.object(BtclockClient, "async_dnd_disable", disable_mock),
+        patch("custom_components.btclock.switch.datetime", fake_dt),
+        patch("custom_components.btclock.switch.time", time),
+        pytest.raises(HomeAssistantError, match="scheduled quiet hours"),
+    ):
+        await hass.services.async_call(
+            "switch",
+            "turn_off",
+            {"entity_id": "switch.btclock_9d5530_do_not_disturb"},
+            blocking=True,
+        )
+
+    disable_mock.assert_not_awaited()
+    assert coord.data["dnd"]["active"] is True
+
+
+async def test_dnd_switch_turn_off_outside_schedule(
+    hass: HomeAssistant, load_fixture
+) -> None:
+    """Outside the quiet window, turn_off hits the API and clears optimistic
+    active/enabled flags."""
+    from datetime import datetime, time
+    from unittest.mock import MagicMock
+
+    settings = load_fixture("settings_v3_4_revb").copy()
+    settings["tzString"] = "UTC0"
+    settings["dnd"] = {
+        **settings["dnd"],
+        "dndTimeEnabled": True,
+        "startHour": 23,
+        "startMinute": 0,
+        "endHour": 7,
+        "endMinute": 0,
+    }
+    status = load_fixture("status_v3_4_dnd_active").copy()
+    status["dnd"] = {**status["dnd"], "enabled": True, "active": True}
+    entry = await _setup(hass, settings, status)
+    coord = entry.runtime_data
+
+    disable_mock = AsyncMock()
+    frozen_now = datetime(2026, 4, 20, 12, 0)  # outside 23:00 → 07:00 window
+    fake_dt = MagicMock(wraps=datetime)
+    fake_dt.now = MagicMock(return_value=frozen_now)
+
+    with (
+        patch.object(BtclockClient, "async_dnd_disable", disable_mock),
+        patch("custom_components.btclock.switch.datetime", fake_dt),
+        patch("custom_components.btclock.switch.time", time),
+    ):
+        await hass.services.async_call(
+            "switch",
+            "turn_off",
+            {"entity_id": "switch.btclock_9d5530_do_not_disturb"},
+            blocking=True,
+        )
+
+    disable_mock.assert_awaited_once()
+    assert coord.data["dnd"]["enabled"] is False
+    assert coord.data["dnd"]["active"] is False
+
+
 async def test_staggered_led_toggles_accumulate(
     hass: HomeAssistant, load_fixture, status_leds_off
 ) -> None:
