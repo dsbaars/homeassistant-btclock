@@ -30,6 +30,6 @@ jobs:
           zip btclock_integration.zip -r ./
 
       - name: "Upload the ZIP to the release"
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: ${{ github.workspace }}/custom_components/btclock/btclock_integration.zip
