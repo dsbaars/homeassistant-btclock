@@ -17,8 +17,6 @@ show_text:
       selector:
         text:
           type: text
-          min: 1
-          max: 16
 
 show_custom:
   name: Show custom screens
