@@ -1,0 +1,5 @@
+-r requirements.txt
+# 1.50+ ships wheels for Python 3.13/3.14 (greenlet 1.4+ pre-built).
+playwright>=1.50
+# Pillow handles the PNG crops for per-section captures.
+Pillow>=11.0

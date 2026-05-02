@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Generate dashboard / integration / device screenshots against a local
+# Home Assistant instance pointed at a stub BTClock device. Outputs PNGs
+# to docs/screenshots/ (override with $1).
+#
+# First run installs Playwright + Chromium into the project venv.
+
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+PY=.venv/bin/python
+PIP=.venv/bin/pip
+
+if [[ ! -x "$PY" ]]; then
+    echo "scripts/screenshot: .venv/bin/python missing — run scripts/setup first." >&2
+    exit 1
+fi
+
+if ! "$PY" -c "import playwright" 2>/dev/null; then
+    echo "Installing Playwright…"
+    "$PIP" install -q -r requirements_screenshot.txt
+    "$PY" -m playwright install --with-deps chromium
+fi
+
+OUT_DIR="${1:-docs/screenshots}"
+mkdir -p "$OUT_DIR"
+exec "$PY" scripts/_screenshot.py --output "$OUT_DIR" "${@:2}"
