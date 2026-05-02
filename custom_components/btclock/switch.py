@@ -19,7 +19,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from . import BtclockConfigEntry
 from .coordinator import BtclockCoordinator
 from .entity import BtclockEntity
-from .models import ApiVariant
+from .models import MODERN_VARIANTS
 
 
 async def async_setup_entry(
@@ -29,11 +29,16 @@ async def async_setup_entry(
 ) -> None:
     coordinator = entry.runtime_data
     entities: list[SwitchEntity] = [BtclockTimerSwitch(coordinator)]
-    if coordinator.client.variant is ApiVariant.V3_4:
+    if coordinator.client.variant in MODERN_VARIANTS:
         entities.append(BtclockDndSwitch(coordinator))
         entities.append(BtclockDndTimeEnabledSwitch(coordinator))
+    # SETTINGS_SWITCHES include both always-on and v4-only entries; the
+    # `available_fn` filter on each description suppresses any whose
+    # backing setting key the firmware doesn't expose.
     entities.extend(
-        BtclockSettingsSwitch(coordinator, desc) for desc in SETTINGS_SWITCHES
+        BtclockSettingsSwitch(coordinator, desc)
+        for desc in SETTINGS_SWITCHES
+        if desc.available_fn is None or desc.available_fn(coordinator)
     )
     async_add_entities(entities)
 
@@ -167,6 +172,19 @@ class BtclockSettingsSwitchDescription(SwitchEntityDescription):
     available_fn: Callable[[BtclockCoordinator], bool] | None = None
 
 
+def _setting_present(key: str) -> Callable[[BtclockCoordinator], bool]:
+    """Surface the entity only when the device returns the backing setting key.
+
+    Factory for `available_fn`: lets v4-only fields be gated by setting
+    presence rather than a hard-coded variant check.
+    """
+
+    def _check(c: BtclockCoordinator) -> bool:
+        return c.client.settings.get(key) is not None
+
+    return _check
+
+
 SETTINGS_SWITCHES: tuple[BtclockSettingsSwitchDescription, ...] = (
     BtclockSettingsSwitchDescription(
         key="nostr_zap_notify",
@@ -197,6 +215,63 @@ SETTINGS_SWITCHES: tuple[BtclockSettingsSwitchDescription, ...] = (
         translation_key="disable_leds",
         icon="mdi:led-off",
         setting_key="disableLeds",
+    ),
+    # ---- v4-only switches (gated by setting presence) ----
+    BtclockSettingsSwitchDescription(
+        key="bitaxe_enabled",
+        translation_key="bitaxe_enabled",
+        icon="mdi:pickaxe",
+        setting_key="bitaxeEnabled",
+        available_fn=_setting_present("bitaxeEnabled"),
+    ),
+    BtclockSettingsSwitchDescription(
+        key="mining_pool_stats",
+        translation_key="mining_pool_stats",
+        icon="mdi:chart-line",
+        setting_key="miningPoolStats",
+        available_fn=_setting_present("miningPoolStats"),
+    ),
+    BtclockSettingsSwitchDescription(
+        key="pool_global_stats",
+        translation_key="pool_global_stats",
+        icon="mdi:earth",
+        setting_key="poolGlobalStats",
+        available_fn=_setting_present("poolGlobalStats"),
+    ),
+    BtclockSettingsSwitchDescription(
+        key="mow_mode",
+        translation_key="mow_mode",
+        icon="mdi:check-decagram",
+        setting_key="mowMode",
+        available_fn=_setting_present("mowMode"),
+    ),
+    BtclockSettingsSwitchDescription(
+        key="use_sats_symbol",
+        translation_key="use_sats_symbol",
+        icon="mdi:bitcoin",
+        setting_key="useSatsSymbol",
+        available_fn=_setting_present("useSatsSymbol"),
+    ),
+    BtclockSettingsSwitchDescription(
+        key="use_block_countdown",
+        translation_key="use_block_countdown",
+        icon="mdi:counter",
+        setting_key="useBlkCountdown",
+        available_fn=_setting_present("useBlkCountdown"),
+    ),
+    BtclockSettingsSwitchDescription(
+        key="hide_lead_zero",
+        translation_key="hide_lead_zero",
+        icon="mdi:numeric-0-circle-outline",
+        setting_key="hideLeadZero",
+        available_fn=_setting_present("hideLeadZero"),
+    ),
+    BtclockSettingsSwitchDescription(
+        key="inverted_color",
+        translation_key="inverted_color",
+        icon="mdi:invert-colors",
+        setting_key="invertedColor",
+        available_fn=_setting_present("invertedColor"),
     ),
 )
 

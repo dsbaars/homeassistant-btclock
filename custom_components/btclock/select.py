@@ -9,7 +9,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from . import BtclockConfigEntry
 from .coordinator import BtclockCoordinator
 from .entity import BtclockEntity
-from .models import ApiVariant
+from .models import MODERN_VARIANTS, ApiVariant
 
 
 async def async_setup_entry(
@@ -20,11 +20,24 @@ async def async_setup_entry(
     coordinator = entry.runtime_data
     entities: list[SelectEntity] = [BtclockScreenSelect(coordinator)]
     if (
-        coordinator.client.variant is ApiVariant.V3_4
+        coordinator.client.variant in MODERN_VARIANTS
         and coordinator.client.settings.get("actCurrencies")
     ):
         entities.append(BtclockCurrencySelect(coordinator))
+    # v4 ships real catalogues for `availablePools` / `availableFonts`;
+    # v3.4 emits a placeholder `[""]` so we filter to "more than the empty
+    # placeholder" rather than gating strictly on variant.
+    if coordinator.client.variant is ApiVariant.V4:
+        if _has_real_catalog(coordinator.client.settings.get("availablePools")):
+            entities.append(BtclockMiningPoolSelect(coordinator))
+        if _has_real_catalog(coordinator.client.settings.get("availableFonts")):
+            entities.append(BtclockFontSelect(coordinator))
     async_add_entities(entities)
+
+
+def _has_real_catalog(catalog: list[str] | None) -> bool:
+    """Return True when the catalogue lists at least one non-empty option."""
+    return bool(catalog) and any(item for item in catalog if item)
 
 
 class BtclockScreenSelect(BtclockEntity, SelectEntity):
@@ -93,3 +106,61 @@ class BtclockCurrencySelect(BtclockEntity, SelectEntity):
     async def async_select_option(self, option: str) -> None:
         await self.coordinator.client.async_set_currency(option)
         self.coordinator.async_apply_optimistic({"currency": option})
+
+
+class BtclockMiningPoolSelect(BtclockEntity, SelectEntity):
+    """Pick the upstream mining-pool data source (v4 only).
+
+    v4 firmware fetches hashrate / earnings stats from one of the pools
+    listed in `availablePools`. Some pools (`viabtc`, `foundry_usa`) treat
+    `miningPoolUser` as a secret API key — those are still selectable but
+    the user must set the key separately on the device.
+    """
+
+    _attr_translation_key = "mining_pool"
+    _attr_icon = "mdi:pickaxe"
+
+    def __init__(self, coordinator: BtclockCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.config_entry.entry_id}_mining_pool"
+
+    @property
+    def options(self) -> list[str]:
+        return [
+            p
+            for p in (self.coordinator.client.settings.get("availablePools") or [])
+            if p
+        ]
+
+    @property
+    def current_option(self) -> str | None:
+        return self.coordinator.client.settings.get("miningPoolName") or None
+
+    async def async_select_option(self, option: str) -> None:
+        await self.coordinator.async_patch_settings({"miningPoolName": option})
+
+
+class BtclockFontSelect(BtclockEntity, SelectEntity):
+    """Pick the on-device EPD font (v4 only)."""
+
+    _attr_translation_key = "font"
+    _attr_icon = "mdi:format-font"
+
+    def __init__(self, coordinator: BtclockCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.config_entry.entry_id}_font"
+
+    @property
+    def options(self) -> list[str]:
+        return [
+            f
+            for f in (self.coordinator.client.settings.get("availableFonts") or [])
+            if f
+        ]
+
+    @property
+    def current_option(self) -> str | None:
+        return self.coordinator.client.settings.get("fontName") or None
+
+    async def async_select_option(self, option: str) -> None:
+        await self.coordinator.async_patch_settings({"fontName": option})

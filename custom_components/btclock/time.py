@@ -12,7 +12,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from . import BtclockConfigEntry
 from .coordinator import BtclockCoordinator
 from .entity import BtclockEntity
-from .models import ApiVariant
+from .models import MODERN_VARIANTS
 from .switch import merged_dnd_patch
 
 
@@ -51,7 +51,7 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     coordinator = entry.runtime_data
-    if coordinator.client.variant is not ApiVariant.V3_4:
+    if coordinator.client.variant not in MODERN_VARIANTS:
         return
     async_add_entities(BtclockDndTime(coordinator, spec) for spec in _SPECS)
 

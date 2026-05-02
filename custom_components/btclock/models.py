@@ -16,6 +16,13 @@ class ApiVariant(StrEnum):
 
     LEGACY = "legacy"
     V3_4 = "v3.4"
+    V4 = "v4"
+
+
+# v3.4 (Arduino) and v4 (ESP-IDF) share the same POST-style endpoint set
+# and JSON shapes — `MODERN_VARIANTS` is the gate for entities/services
+# that work on either, distinct from `LEGACY` (GET-based, ≤3.3.x).
+MODERN_VARIANTS: frozenset[ApiVariant] = frozenset({ApiVariant.V3_4, ApiVariant.V4})
 
 
 class DataSource(IntEnum):

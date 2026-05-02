@@ -14,9 +14,11 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import BtclockConfigEntry
+from .api import BtclockAuthError, BtclockCommunicationError
+from .const import LOGGER
 from .coordinator import BtclockCoordinator
 from .entity import BtclockEntity
-from .models import ApiVariant, LedDict
+from .models import MODERN_VARIANTS, LedDict
 
 _OFF_HEX = "#000000"
 
@@ -31,9 +33,25 @@ async def async_setup_entry(
 
     entities: list[LightEntity] = [BtclockLed(coordinator, i) for i in range(len(leds))]
     if (
-        coordinator.client.variant is ApiVariant.V3_4
+        coordinator.client.variant in MODERN_VARIANTS
         and coordinator.client.settings.get("hasFrontlight")
     ):
+        # v4 firmware doesn't inline `flStatus` in /api/status — it lives
+        # on /api/frontlight/status. Bootstrap once so the entity reflects
+        # real device state on first load; the coordinator's status merge
+        # then preserves it across subsequent updates.
+        if not coordinator.data.get("flStatus"):
+            try:
+                fl = await coordinator.client.async_get_frontlight_status()
+            except (BtclockCommunicationError, BtclockAuthError) as err:
+                LOGGER.debug(
+                    "Could not bootstrap flStatus for %s: %s",
+                    coordinator.client.host,
+                    err,
+                )
+                fl = None
+            if fl and fl.get("flStatus"):
+                coordinator.async_apply_optimistic({"flStatus": fl["flStatus"]})
         entities.append(BtclockFrontlight(coordinator))
 
     async_add_entities(entities)

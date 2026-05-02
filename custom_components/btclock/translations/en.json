@@ -83,20 +83,25 @@
       "dnd_active":       { "name": "Do-not-disturb active" }
     },
     "button": {
-      "identify":         { "name": "Identify" },
-      "restart":          { "name": "Restart" },
-      "full_refresh":     { "name": "Full refresh" },
-      "screen_next":      { "name": "Next screen" },
-      "screen_previous":  { "name": "Previous screen" },
-      "frontlight_flash": { "name": "Flash frontlight" }
+      "identify":            { "name": "Identify" },
+      "restart":             { "name": "Restart" },
+      "full_refresh":        { "name": "Full refresh" },
+      "screen_next":         { "name": "Next screen" },
+      "screen_previous":     { "name": "Previous screen" },
+      "frontlight_flash":    { "name": "Flash frontlight" },
+      "simulate_zap":        { "name": "Simulate Nostr Zap" },
+      "clear_pool_logos":    { "name": "Clear cached pool logos" },
+      "restart_datasources": { "name": "Restart data sources" }
     },
     "light": {
       "led":        { "name": "LED {index}" },
       "frontlight": { "name": "Frontlight" }
     },
     "select": {
-      "screen":   { "name": "Screen" },
-      "currency": { "name": "Currency" }
+      "screen":      { "name": "Screen" },
+      "currency":    { "name": "Currency" },
+      "mining_pool": { "name": "Mining pool" },
+      "font":        { "name": "Display font" }
     },
     "sensor": {
       "current_screen": { "name": "Current screen" },
@@ -112,21 +117,32 @@
       }
     },
     "switch": {
-      "timer":             { "name": "Screen timer" },
-      "dnd":               { "name": "Do-not-disturb" },
-      "dnd_time_enabled":  { "name": "Scheduled do-not-disturb" },
-      "nostr_zap_notify":  { "name": "Nostr Zap notifications" },
-      "led_flash_on_zap":  { "name": "LED flash on Nostr Zap" },
+      "timer":              { "name": "Screen timer" },
+      "dnd":                { "name": "Do-not-disturb" },
+      "dnd_time_enabled":   { "name": "Scheduled do-not-disturb" },
+      "nostr_zap_notify":   { "name": "Nostr Zap notifications" },
+      "led_flash_on_zap":   { "name": "LED flash on Nostr Zap" },
       "led_flash_on_update": { "name": "LED flash on new block" },
-      "steal_focus":       { "name": "Steal focus on new block" },
-      "disable_leds":      { "name": "Disable LEDs" }
+      "steal_focus":        { "name": "Steal focus on new block" },
+      "disable_leds":       { "name": "Disable LEDs" },
+      "bitaxe_enabled":     { "name": "Bitaxe data source" },
+      "mining_pool_stats":  { "name": "Mining pool stats" },
+      "pool_global_stats":  { "name": "Show pool-wide stats" },
+      "mow_mode":           { "name": "MoW mode" },
+      "use_sats_symbol":    { "name": "Use sats symbol" },
+      "use_block_countdown": { "name": "Show block countdown" },
+      "hide_lead_zero":     { "name": "Hide leading zero on hours" },
+      "inverted_color":     { "name": "Invert display colors" }
     },
     "time": {
       "dnd_start": { "name": "Do-not-disturb start" },
       "dnd_end":   { "name": "Do-not-disturb end" }
     },
     "number": {
-      "led_brightness": { "name": "LED brightness" }
+      "led_brightness":   { "name": "LED brightness" },
+      "bitaxe_poll_sec":  { "name": "Bitaxe poll interval" },
+      "pool_poll_sec":    { "name": "Mining pool poll interval" },
+      "full_refresh_min": { "name": "Full refresh interval" }
     },
     "update": {
       "firmware": { "name": "Firmware" }

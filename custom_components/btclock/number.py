@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from homeassistant.components.number import (
@@ -9,6 +10,7 @@ from homeassistant.components.number import (
     NumberEntityDescription,
     NumberMode,
 )
+from homeassistant.const import UnitOfTime
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
@@ -23,6 +25,14 @@ class BtclockSettingsNumberDescription(NumberEntityDescription):
     """A numeric settings field that writes via PATCH /api/settings."""
 
     setting_key: str
+    available_fn: Callable[[BtclockCoordinator], bool] | None = None
+
+
+def _setting_present(key: str) -> Callable[[BtclockCoordinator], bool]:
+    def _check(c: BtclockCoordinator) -> bool:
+        return c.client.settings.get(key) is not None
+
+    return _check
 
 
 SETTINGS_NUMBERS: tuple[BtclockSettingsNumberDescription, ...] = (
@@ -37,6 +47,47 @@ SETTINGS_NUMBERS: tuple[BtclockSettingsNumberDescription, ...] = (
         mode=NumberMode.SLIDER,
         setting_key="ledBrightness",
     ),
+    # v4-only poll cadences. Bounds mirror the firmware's schema so the
+    # device can't reject a value the slider produced.
+    BtclockSettingsNumberDescription(
+        key="bitaxe_poll_sec",
+        translation_key="bitaxe_poll_sec",
+        icon="mdi:timer-cog-outline",
+        native_min_value=5,
+        native_max_value=300,
+        native_step=1,
+        native_unit_of_measurement=UnitOfTime.SECONDS,
+        entity_category=EntityCategory.CONFIG,
+        mode=NumberMode.BOX,
+        setting_key="bitaxePollSec",
+        available_fn=_setting_present("bitaxePollSec"),
+    ),
+    BtclockSettingsNumberDescription(
+        key="pool_poll_sec",
+        translation_key="pool_poll_sec",
+        icon="mdi:timer-cog-outline",
+        native_min_value=10,
+        native_max_value=3600,
+        native_step=1,
+        native_unit_of_measurement=UnitOfTime.SECONDS,
+        entity_category=EntityCategory.CONFIG,
+        mode=NumberMode.BOX,
+        setting_key="poolPollSec",
+        available_fn=_setting_present("poolPollSec"),
+    ),
+    BtclockSettingsNumberDescription(
+        key="full_refresh_min",
+        translation_key="full_refresh_min",
+        icon="mdi:refresh",
+        native_min_value=0,
+        native_max_value=24 * 60,
+        native_step=1,
+        native_unit_of_measurement=UnitOfTime.MINUTES,
+        entity_category=EntityCategory.CONFIG,
+        mode=NumberMode.BOX,
+        setting_key="fullRefreshMin",
+        available_fn=_setting_present("fullRefreshMin"),
+    ),
 )
 
 
@@ -47,7 +98,9 @@ async def async_setup_entry(
 ) -> None:
     coordinator = entry.runtime_data
     async_add_entities(
-        BtclockSettingsNumber(coordinator, desc) for desc in SETTINGS_NUMBERS
+        BtclockSettingsNumber(coordinator, desc)
+        for desc in SETTINGS_NUMBERS
+        if desc.available_fn is None or desc.available_fn(coordinator)
     )
 
 

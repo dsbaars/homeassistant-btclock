@@ -36,6 +36,9 @@ class BtclockEntity(CoordinatorEntity[BtclockCoordinator]):
         super().__init__(coordinator)
         settings = coordinator.client.settings
         hostname = settings.get("hostname") or coordinator.client.host
+        # `gitTag` only exists on v3.x firmware; v4 leaves it empty and
+        # populates `gitRev` from `git describe`. Fall back to `gitRev`
+        # so the HA device card shows a real version on either firmware.
         sw_version = settings.get("gitTag") or settings.get("gitRev")
 
         self._attr_device_info = DeviceInfo(

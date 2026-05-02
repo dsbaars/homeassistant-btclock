@@ -95,3 +95,41 @@ async def test_polling_mode_uses_status_endpoint(
 
     assert data == expected
     client.async_update_status.assert_awaited_once()
+
+
+async def test_status_merge_preserves_flStatus_on_v4(
+    hass: HomeAssistant, config_entry: MockConfigEntry, load_fixture
+) -> None:
+    """v4 firmware omits flStatus from /api/status; the previously cached
+    value must survive subsequent updates so the frontlight light entity
+    doesn't flicker back to "off" on every status frame."""
+    client = _make_mock_client(load_fixture("settings_v4_revb"))
+    coord = BtclockCoordinator(hass, config_entry, client)
+
+    # Bootstrap-equivalent: seed flStatus (as light.async_setup_entry would).
+    coord.async_set_updated_data({"flStatus": [1024, 1024, 1024, 1024]})
+    assert coord.data["flStatus"] == [1024, 1024, 1024, 1024]
+
+    # New v4 status frame omits flStatus → the merge must carry it forward.
+    v4_status = load_fixture("status_v4_revb")
+    assert "flStatus" not in v4_status
+    await coord._on_status_frame(v4_status)  # noqa: SLF001
+
+    assert coord.data["flStatus"] == [1024, 1024, 1024, 1024]
+    assert coord.data["currentScreen"] == 0  # rest of the new frame applied
+
+
+async def test_status_merge_replaces_flStatus_when_present(
+    hass: HomeAssistant, config_entry: MockConfigEntry, load_fixture
+) -> None:
+    """v3.4 firmware does include flStatus in /api/status — when present,
+    the new value must win over whatever the coordinator had cached."""
+    client = _make_mock_client(load_fixture("settings_v3_4_revb"))
+    coord = BtclockCoordinator(hass, config_entry, client)
+    coord.async_set_updated_data({"flStatus": [0, 0, 0, 0]})
+
+    v3_status = load_fixture("status_v3_4_revb")
+    assert "flStatus" in v3_status
+    await coord._on_status_frame(v3_status)  # noqa: SLF001
+
+    assert coord.data["flStatus"] == v3_status["flStatus"]

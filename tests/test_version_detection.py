@@ -31,7 +31,9 @@ def test_v3_4_authed_fixture_detects_as_v3_4(load_fixture) -> None:
         ("v3.4.0", ApiVariant.V3_4),
         ("3.4.1", ApiVariant.V3_4),
         ("3.5.0", ApiVariant.V3_4),
-        ("4.0.0", ApiVariant.V3_4),
+        ("4.0.0", ApiVariant.V4),
+        ("4.0.0-beta.1", ApiVariant.V4),
+        ("v4.1.2", ApiVariant.V4),
         ("3.3.19", ApiVariant.LEGACY),
         ("3.0.0", ApiVariant.LEGACY),
         ("", ApiVariant.LEGACY),
@@ -41,6 +43,21 @@ def test_v3_4_authed_fixture_detects_as_v3_4(load_fixture) -> None:
 def test_gitTag_parsing(tag: str, expected: ApiVariant) -> None:
     # Only gitTag present — no other signals that would flip the answer.
     assert detect_variant({"gitTag": tag}) is expected
+
+
+@pytest.mark.parametrize(
+    "rev, expected",
+    [
+        ("4.0.0", ApiVariant.V4),
+        ("4.0.0-beta.1", ApiVariant.V4),
+        ("v4.1.0", ApiVariant.V4),
+        # `git describe` past-tag form still parses major correctly.
+        ("4.0.0-3-gabc1234", ApiVariant.V4),
+    ],
+)
+def test_gitRev_falls_back_when_gitTag_absent(rev: str, expected: ApiVariant) -> None:
+    # v4 firmware never fills gitTag — only gitRev.
+    assert detect_variant({"gitRev": rev}) is expected
 
 
 def test_httpAuthPassSet_presence_wins_over_missing_tag() -> None:
@@ -66,3 +83,14 @@ def test_lastBuildTime_fallback_pre_cutoff() -> None:
 
 def test_empty_settings_defaults_to_legacy() -> None:
     assert detect_variant({}) is ApiVariant.LEGACY
+
+
+def test_v4_firmware_with_gitRev_detects_as_v4() -> None:
+    # v4 firmware fills `gitRev` (`git describe` output) but never `gitTag`.
+    # Variant detection must classify it as V4 so the v4-only path-table
+    # entries (simulate_zap, factory_reset, …) become available.
+    settings = {
+        "gitRev": "4.0.0-beta.1",
+        "httpAuthPassSet": False,
+    }
+    assert detect_variant(settings) is ApiVariant.V4

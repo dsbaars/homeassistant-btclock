@@ -96,7 +96,26 @@ V3_4_PATHS: Final[dict[str, PathEntry]] = {
     "upload_webui": ("POST", "/upload/webui"),
 }
 
+# v4 firmware speaks the v3.4 protocol verbatim and adds a handful of
+# new diagnostic / lifecycle endpoints. Keep the table layered on top of
+# V3_4_PATHS so any future v3.4 path additions are inherited automatically.
+V4_PATHS: Final[dict[str, PathEntry]] = {
+    **V3_4_PATHS,
+    # Datasource control (pause/restart upstream feeds without rebooting).
+    "stop_datasources": ("POST", "/api/stop_datasources"),
+    "restart_datasources": ("POST", "/api/restart_datasources"),
+    # Action endpoints unique to v4.
+    "simulate_zap": ("POST", "/api/action/simulate_zap"),
+    "clear_pool_logos": ("POST", "/api/action/clear_pool_logos"),
+    # Lifecycle / diagnostics.
+    "factory_reset": ("POST", "/api/factory_reset"),
+    "wifi_set_tx_power": ("POST", "/api/wifi_set_tx_power"),
+    "coredump_get": ("GET", "/api/coredump"),
+    "coredump_delete": ("DELETE", "/api/coredump"),
+}
+
 PATHS: Final[dict[ApiVariant, dict[str, PathEntry]]] = {
     ApiVariant.LEGACY: LEGACY_PATHS,
     ApiVariant.V3_4: V3_4_PATHS,
+    ApiVariant.V4: V4_PATHS,
 }

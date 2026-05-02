@@ -3,7 +3,14 @@
 Polls the device's configured `gitReleaseUrl` once a day to discover the
 latest BTClock release, then surfaces it as a standard HA update entity.
 Only instantiated on 3.4.0+ firmware and only when the installed firmware
-tag is a real semver release (never for commit-hash / dev builds).
+identifier is a real release tag (never for commit-hash / dirty / dev
+builds).
+
+The "installed version" comes from `gitTag` on v3.4.x firmware. v4 firmware
+doesn't fill `gitTag` separately — only `gitRev`, which is a `git describe`
+output (`4.0.0`, `4.0.0-beta.1`, or `4.0.0-3-g<sha>` / `-dirty` for
+non-release builds). `_resolved_version()` picks whichever the device
+provides; `_is_real_version()` filters to genuine release tags only.
 
 Install path:
   - If the user presses the default Install (or specifies the latest
@@ -63,7 +70,10 @@ _LITTLEFS_SIZE: dict[str, str] = {
     "REV_V8_EPD_2_13": "16MB",
 }
 
-_SEMVER_RE = re.compile(r"^\d+\.\d+\.\d+$")
+_SEMVER_RE = re.compile(r"^v?\d+\.\d+\.\d+(?:-[A-Za-z0-9.]+)?$")
+# `git describe` appends `-N-g<sha>` for "N commits past the last tag".
+# That's not a release; reject anything that carries this suffix.
+_GIT_DESCRIBE_AHEAD_RE = re.compile(r"-\d+-g[0-9a-f]+")
 _UPDATE_CHECK_INTERVAL = timedelta(hours=24)
 _RELEASE_FETCH_TIMEOUT = 15
 _BINARY_FETCH_TIMEOUT = 120
@@ -76,10 +86,35 @@ _INSTALL_WATCHDOG_POLL = 60  # s between settings re-reads
 
 
 def _is_real_version(tag: str | None) -> bool:
-    """Only semver tags like '3.3.19' count — skip commit hashes and '.dev' builds."""
+    """Only proper release tags count — skip commit hashes, dirty, and dev builds.
+
+    Accepts plain `3.4.0` and prerelease tags like `4.0.0-beta.1` (v4
+    firmware). Rejects:
+      * commit-only hashes (`53eb658`)
+      * uncommitted-local-changes builds (any `-dirty` suffix)
+      * commits-past-tag describe output (`4.0.0-3-gabc123`)
+    """
     if not tag:
         return False
-    return _SEMVER_RE.match(tag.lstrip("v")) is not None
+    if "-dirty" in tag:
+        return False
+    if _GIT_DESCRIBE_AHEAD_RE.search(tag):
+        return False
+    return _SEMVER_RE.match(tag) is not None
+
+
+def _resolved_version(settings: dict[str, Any]) -> str | None:
+    """Return the device's effective version identifier, preferring `gitTag`.
+
+    v3.x firmware fills `gitTag` directly (e.g. `3.4.0`). v4 firmware
+    leaves `gitTag` empty and only fills `gitRev` from `git describe` —
+    treat that as the version source for v4 devices.
+    """
+    tag = settings.get("gitTag")
+    if tag:
+        return tag
+    rev = settings.get("gitRev")
+    return rev or None
 
 
 def _repo_base_from_release_url(url: str) -> str | None:
@@ -139,7 +174,7 @@ class BtclockUpdateCoordinator(DataUpdateCoordinator[dict[str, Any] | None]):
         # a synthesized changelog from the compare API so the user actually
         # sees what's in the update.
         body = (release.get("body") or "").strip()
-        installed = self._device.client.settings.get("gitTag") or ""
+        installed = _resolved_version(self._device.client.settings) or ""
         latest = release.get("tag_name") or ""
         if (
             not body
@@ -204,7 +239,7 @@ class BtclockUpdate(BtclockEntity, UpdateEntity):
 
     @property
     def installed_version(self) -> str | None:
-        tag = self.coordinator.client.settings.get("gitTag")
+        tag = _resolved_version(self.coordinator.client.settings)
         return tag if _is_real_version(tag) else None
 
     @property
@@ -241,9 +276,11 @@ class BtclockUpdate(BtclockEntity, UpdateEntity):
         release = self._release.data or {}
         latest = release.get("tag_name")
 
-        # Capture the pre-install tag so the watchdog can detect the reboot
-        # onto the new firmware by a gitTag change.
-        old_tag = client.settings.get("gitTag")
+        # Capture the pre-install version so the watchdog can detect the
+        # reboot onto the new firmware by a version change. Uses
+        # `_resolved_version` so v4 (which only fills `gitRev`) works the
+        # same as v3 (which fills `gitTag`).
+        old_tag = _resolved_version(client.settings)
 
         # Default (version is None) or installing the latest: let the device
         # do the work. One request, one reboot — no bytes over the HA session.
@@ -326,7 +363,7 @@ class BtclockUpdate(BtclockEntity, UpdateEntity):
         self.async_write_ha_state()
 
     async def _watch_install(self, old_tag: str | None) -> None:
-        """Poll /api/settings once a minute until gitTag changes or we time out.
+        """Poll /api/settings once a minute until the version changes or we time out.
 
         Polling beats listening to `isOTAUpdating`: the firmware doesn't
         push a status frame when OTA starts, and SSE drops across the
@@ -335,9 +372,9 @@ class BtclockUpdate(BtclockEntity, UpdateEntity):
 
         On a successful firmware change we also schedule a config-entry
         reload. The new firmware may be a different API variant (legacy
-        vs 3.4.0+) and that changes which platforms expose which entities;
-        reloading re-runs `async_setup_entry` so the entity set matches
-        the device's current capabilities.
+        vs 3.4.0+ vs v4) and that changes which platforms expose which
+        entities; reloading re-runs `async_setup_entry` so the entity set
+        matches the device's current capabilities.
         """
         client = self.coordinator.client
         tag_changed = False
@@ -351,7 +388,7 @@ class BtclockUpdate(BtclockEntity, UpdateEntity):
                 except Exception as err:  # noqa: BLE001 — mid-reboot is expected
                     LOGGER.debug("OTA poll: %s unreachable (%s)", client.host, err)
                     continue
-                new_tag = settings.get("gitTag")
+                new_tag = _resolved_version(settings)
                 if new_tag != old_tag:
                     LOGGER.info(
                         "OTA complete on %s: %s → %s", client.host, old_tag, new_tag
@@ -359,7 +396,7 @@ class BtclockUpdate(BtclockEntity, UpdateEntity):
                     tag_changed = True
                     return
                 LOGGER.debug(
-                    "OTA poll: %s still reports gitTag=%s", client.host, new_tag
+                    "OTA poll: %s still reports version=%s", client.host, new_tag
                 )
             LOGGER.warning(
                 "OTA watchdog timed out on %s (still at %s after %d s)",
@@ -401,10 +438,10 @@ async def async_setup_entry(
 ) -> None:
     """Add one Update entity per BTClock running a real release."""
     device = entry.runtime_data
-    installed = device.client.settings.get("gitTag")
+    installed = _resolved_version(device.client.settings)
     if not _is_real_version(installed):
         LOGGER.debug(
-            "Skipping Update entity for %s — gitTag %r is a dev build",
+            "Skipping Update entity for %s — version %r is a dev build",
             device.client.host,
             installed,
         )

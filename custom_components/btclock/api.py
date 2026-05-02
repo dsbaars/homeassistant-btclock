@@ -16,7 +16,7 @@ import aiohttp
 
 from .api_paths import PATHS
 from .const import LOGGER, REQUEST_TIMEOUT
-from .models import ApiVariant, LedDict, Settings, Status, SystemStatus
+from .models import MODERN_VARIANTS, ApiVariant, LedDict, Settings, Status, SystemStatus
 
 # Build timestamp at which firmware flipped to POST-style state changes.
 # Reviewed against /Users/padjuri/src/btclock_v3_fci/platformio.ini + scripts/git_rev.py
@@ -136,7 +136,7 @@ class BtclockClient:
         await self._request_key("timer_pause", expect_json=False)
 
     async def async_set_screen(self, screen_id: int) -> None:
-        if self.variant is ApiVariant.V3_4:
+        if self.variant in MODERN_VARIANTS:
             await self._request_key(
                 "show_screen", params={"s": screen_id}, expect_json=False
             )
@@ -144,25 +144,25 @@ class BtclockClient:
             await self._request_key("show_screen", fmt=(screen_id,), expect_json=False)
 
     async def async_screen_next(self) -> None:
-        self._require_v3_4("screen_next")
+        self._require_modern("screen_next")
         await self._request_key("screen_next", expect_json=False)
 
     async def async_screen_previous(self) -> None:
-        self._require_v3_4("screen_prev")
+        self._require_modern("screen_prev")
         await self._request_key("screen_prev", expect_json=False)
 
     async def async_set_currency(self, code: str) -> None:
-        self._require_v3_4("show_currency")
+        self._require_modern("show_currency")
         await self._request_key("show_currency", params={"c": code}, expect_json=False)
 
     async def async_show_text(self, text: str) -> None:
         """Display `text` across all screens, one character per screen."""
-        self._require_v3_4("show_text")
+        self._require_modern("show_text")
         await self._request_key("show_text", params={"t": text}, expect_json=False)
 
     async def async_show_custom(self, screens: list[str]) -> None:
         """Display one string per screen (array body, clamped to numScreens)."""
-        self._require_v3_4("show_custom")
+        self._require_modern("show_custom")
         await self._request_key("show_custom", json_body=screens, expect_json=False)
 
     # ---- LEDs -------------------------------------------------------------------
@@ -193,32 +193,44 @@ class BtclockClient:
     # ---- DND --------------------------------------------------------------------
 
     async def async_dnd_enable(self) -> None:
-        self._require_v3_4("dnd_enable")
+        self._require_modern("dnd_enable")
         await self._request_key("dnd_enable", expect_json=False)
 
     async def async_dnd_disable(self) -> None:
-        self._require_v3_4("dnd_disable")
+        self._require_modern("dnd_disable")
         await self._request_key("dnd_disable", expect_json=False)
 
     # ---- Frontlight (3.4.0 + hasFrontlight) -------------------------------------
 
     async def async_frontlight_on(self) -> None:
-        self._require_v3_4("frontlight_on")
+        self._require_modern("frontlight_on")
         await self._request_key("frontlight_on", expect_json=False)
 
     async def async_frontlight_off(self) -> None:
-        self._require_v3_4("frontlight_off")
+        self._require_modern("frontlight_off")
         await self._request_key("frontlight_off", expect_json=False)
 
     async def async_frontlight_flash(self) -> None:
-        self._require_v3_4("frontlight_flash")
+        self._require_modern("frontlight_flash")
         await self._request_key("frontlight_flash", expect_json=False)
 
     async def async_frontlight_brightness(self, value: int) -> None:
-        self._require_v3_4("frontlight_bright")
+        self._require_modern("frontlight_bright")
         await self._request_key(
             "frontlight_bright", params={"b": value}, expect_json=False
         )
+
+    async def async_get_frontlight_status(self) -> dict[str, Any]:
+        """Read the dedicated /api/frontlight/status endpoint.
+
+        Shape: `{"flStatus": [<duty> per panel]}`. v3.4 firmware also
+        inlines this under `/api/status`, but v4 firmware only exposes
+        it here — the integration uses this to bootstrap the cached
+        flStatus on v4 so the frontlight light entity reflects real
+        device state on first load.
+        """
+        self._require_modern("frontlight_status")
+        return await self._request_key("frontlight_status") or {}
 
     # ---- OTA / firmware update (variant-dispatched) -----------------------------
 
@@ -238,11 +250,32 @@ class BtclockClient:
         """Multipart upload of the LittleFS webUI image."""
         await self._upload_key("upload_webui", data, filename, field="webui")
 
+    # ---- v4-only actions --------------------------------------------------------
+
+    async def async_simulate_zap(self) -> None:
+        """Trigger the LED + screen-overlay zap effect (v4 diagnostic)."""
+        self._require_v4("simulate_zap")
+        await self._request_key("simulate_zap", expect_json=False)
+
+    async def async_clear_pool_logos(self) -> None:
+        """Wipe cached pool-logo bitmaps so the runtime fetcher re-downloads."""
+        self._require_v4("clear_pool_logos")
+        await self._request_key("clear_pool_logos", expect_json=False)
+
+    async def async_restart_datasources(self) -> None:
+        """Reconnect upstream feeds without rebooting the device."""
+        self._require_v4("restart_datasources")
+        await self._request_key("restart_datasources", expect_json=False)
+
     # ---- Internals --------------------------------------------------------------
 
-    def _require_v3_4(self, key: str) -> None:
-        if self._variant is not ApiVariant.V3_4:
+    def _require_modern(self, key: str) -> None:
+        if self._variant not in MODERN_VARIANTS:
             raise BtclockError(f"Endpoint {key!r} requires firmware 3.4.0+")
+
+    def _require_v4(self, key: str) -> None:
+        if self._variant is not ApiVariant.V4:
+            raise BtclockError(f"Endpoint {key!r} requires v4 firmware")
 
     def url_for(self, key: str, *fmt: Any) -> str:
         """Resolve a path-table key to an absolute URL, for SSE or tests."""
@@ -341,27 +374,37 @@ def detect_variant(settings: Settings) -> ApiVariant:
     """Pick the firmware variant from a `/api/settings` response.
 
     Strategy:
-      1. `gitTag` is a real semver — trust it. `>= 3.4` → V3_4, else LEGACY.
+      1. Read the version source — `gitTag` on v3.x, `gitRev` on v4 (which
+         leaves `gitTag` empty and stamps `gitRev` from `git describe`).
+         Major >= 4 → V4. Major.Minor >= 3.4 → V3_4. Else LEGACY.
          (Observed in the wild: 3.3.19 builds from main already expose
          `httpAuthPassSet`, yet still use GET on action routes — so we
          must not let the fallbacks flip those to V3_4.)
-      2. No usable tag: `httpAuthPassSet` present → V3_4.
+      2. No usable version: `httpAuthPassSet` present → V3_4.
       3. Still unknown: `lastBuildTime` past the 3.4.0 cutoff → V3_4.
       4. Otherwise LEGACY.
     """
-    tag = str(settings.get("gitTag") or "").lstrip("v").strip()
+    raw = str(settings.get("gitTag") or settings.get("gitRev") or "")
+    tag = raw.lstrip("v").strip()
     tag_parts = tag.split(".") if tag else []
     try:
         major = int(tag_parts[0]) if tag_parts else None
-        minor = int(tag_parts[1]) if len(tag_parts) > 1 else 0
+        # `git describe` on v4 yields strings like "4.0.0-beta.1"; the
+        # second segment is still a plain integer. Strip any prerelease
+        # tail off the third segment so e.g. "4.0.0-beta.1" parses too.
+        minor_raw = tag_parts[1] if len(tag_parts) > 1 else "0"
+        minor = int(minor_raw.split("-")[0])
     except ValueError:
         major = minor = None
 
     if major is not None:
+        if major >= 4:
+            LOGGER.debug("Detected V4 via version=%s", tag)
+            return ApiVariant.V4
         if (major, minor) >= (3, 4):
-            LOGGER.debug("Detected V3_4 via gitTag=%s", tag)
+            LOGGER.debug("Detected V3_4 via version=%s", tag)
             return ApiVariant.V3_4
-        LOGGER.debug("Detected LEGACY via gitTag=%s", tag)
+        LOGGER.debug("Detected LEGACY via version=%s", tag)
         return ApiVariant.LEGACY
 
     if "httpAuthPassSet" in settings:
@@ -377,5 +420,5 @@ def detect_variant(settings: Settings) -> ApiVariant:
         except ValueError:
             pass
 
-    LOGGER.debug("Detected LEGACY variant (gitTag=%r)", tag)
+    LOGGER.debug("Detected LEGACY variant (version=%r)", tag)
     return ApiVariant.LEGACY

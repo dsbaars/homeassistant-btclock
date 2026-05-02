@@ -77,6 +77,29 @@ BUTTONS: tuple[BtclockButtonDescription, ...] = (
         path_key="frontlight_flash",
         available_fn=lambda c: bool(c.client.settings.get("hasFrontlight")),
     ),
+    # v4-only diagnostic / maintenance actions. Auto-suppressed on v3.x
+    # because the path key is missing from V3_4_PATHS.
+    BtclockButtonDescription(
+        key="simulate_zap",
+        translation_key="simulate_zap",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        press_fn=lambda c: c.client.async_simulate_zap(),
+        path_key="simulate_zap",
+    ),
+    BtclockButtonDescription(
+        key="clear_pool_logos",
+        translation_key="clear_pool_logos",
+        entity_category=EntityCategory.CONFIG,
+        press_fn=lambda c: c.client.async_clear_pool_logos(),
+        path_key="clear_pool_logos",
+    ),
+    BtclockButtonDescription(
+        key="restart_datasources",
+        translation_key="restart_datasources",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        press_fn=lambda c: c.client.async_restart_datasources(),
+        path_key="restart_datasources",
+    ),
 )
 
 

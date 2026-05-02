@@ -1,0 +1,35 @@
+{
+  "currentScreen": 0,
+  "numScreens": 7,
+  "timerRunning": true,
+  "isOTAUpdating": false,
+  "espUptime": 12345,
+  "epdInverted": false,
+  "espFreeHeap": 180000,
+  "espHeapSize": 327680,
+  "espFreePsram": 6000000,
+  "espPsramSize": 8388608,
+  "connectionStatus": {
+    "price": true,
+    "blocks": true,
+    "V2": false,
+    "nostr": false
+  },
+  "rssi": -52,
+  "currency": "USD",
+  "data": ["8", "9", "6", "1", "2", "3", "4"],
+  "leds": [
+    { "hex": "#FFCC00", "red": 255, "green": 204, "blue": 0 },
+    { "hex": "#FFCC00", "red": 255, "green": 204, "blue": 0 },
+    { "hex": "#000000", "red": 0, "green": 0, "blue": 0 },
+    { "hex": "#000000", "red": 0, "green": 0, "blue": 0 }
+  ],
+  "dnd": {
+    "enabled": false,
+    "dndTimeEnabled": false,
+    "startTime": "22:00",
+    "endTime": "7:00",
+    "active": false
+  },
+  "lightLevel": 150
+}

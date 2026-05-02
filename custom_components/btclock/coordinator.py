@@ -116,7 +116,22 @@ class BtclockCoordinator(DataUpdateCoordinator[Status]):
 
     async def _on_status_frame(self, payload: Status) -> None:
         """SSE delivered a new status — publish it to entities."""
-        self.async_set_updated_data(payload)
+        self.async_set_updated_data(self._merge_status(payload))
+
+    def _merge_status(self, payload: Status) -> Status:
+        """Carry forward fields that the device sometimes omits.
+
+        v4 firmware doesn't include `flStatus` in `/api/status` — it lives
+        only on `/api/frontlight/status`. Without this carry-forward, every
+        status update would wipe the bootstrapped/optimistic frontlight
+        state and the light entity would flip back to "off". v3.x firmware
+        always includes `flStatus`, so the merge is a no-op there.
+        """
+        prev = self.data or {}
+        if "flStatus" not in payload and prev.get("flStatus") is not None:
+            merged: Status = {**payload, "flStatus": prev["flStatus"]}
+            return merged
+        return payload
 
     # ---- Optimistic updates ------------------------------------------------
 
@@ -195,7 +210,7 @@ class BtclockCoordinator(DataUpdateCoordinator[Status]):
     async def _async_update_data(self) -> Status:
         """Only called in polling mode (update_interval is None otherwise)."""
         try:
-            return await self.client.async_update_status()
+            return self._merge_status(await self.client.async_update_status())
         except BtclockAuthError as err:
             raise ConfigEntryAuthFailed(str(err)) from err
         except BtclockCommunicationError as err:

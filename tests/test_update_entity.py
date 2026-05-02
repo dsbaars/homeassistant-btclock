@@ -17,6 +17,7 @@ from custom_components.btclock.update import (
     _is_real_version,
     _release_notes_from_compare,
     _repo_base_from_release_url,
+    _resolved_version,
 )
 
 
@@ -78,14 +79,40 @@ async def _setup(
         ("3.3.19", True),
         ("3.4.0", True),
         ("v3.4.0", True),
+        # v4 prerelease tags from `git describe` on a tagged commit.
+        ("4.0.0", True),
+        ("4.0.0-beta.1", True),
+        ("4.1.0-rc.2", True),
         ("53eb658", False),
         ("", False),
         (None, False),
         ("3.3", False),
+        # Uncommitted-local-changes — `git describe --dirty` suffix.
+        ("4.0.0-dirty", False),
+        ("4.0.0-beta.1-dirty", False),
+        # `git describe` "N commits past tag" output — not a release.
+        ("4.0.0-3-gabc1234", False),
+        ("4.0.0-3-gabc1234-dirty", False),
     ],
 )
 def test_is_real_version(tag, expected) -> None:
     assert _is_real_version(tag) is expected
+
+
+@pytest.mark.parametrize(
+    "settings,expected",
+    [
+        # v3.x firmware — gitTag is authoritative.
+        ({"gitTag": "3.4.0", "gitRev": "53eb658"}, "3.4.0"),
+        # v4 firmware — only gitRev is filled; treat it as the version.
+        ({"gitRev": "4.0.0-beta.1"}, "4.0.0-beta.1"),
+        # Both empty.
+        ({}, None),
+        ({"gitTag": "", "gitRev": ""}, None),
+    ],
+)
+def test_resolved_version(settings, expected) -> None:
+    assert _resolved_version(settings) == expected
 
 
 def test_repo_base_from_release_url() -> None:
@@ -125,6 +152,80 @@ async def test_update_entity_reports_latest_version(
         state.attributes["release_url"]
         == "https://git.btclock.dev/btclock/btclock_v3/releases/tag/3.3.19"
     )
+
+
+async def test_update_entity_uses_gitRev_on_v4_firmware(
+    hass: HomeAssistant, mock_aioresponse, load_fixture
+) -> None:
+    """v4 firmware fills `gitRev` (`git describe`) but not `gitTag`.
+
+    The Update entity must surface that as `installed_version` instead of
+    showing a blank value, and the release URL points at the v4 repo.
+    """
+    settings = load_fixture("settings_v4_revb")
+    v4_release_url = settings["gitReleaseUrl"]
+    v4_release = {
+        "tag_name": "4.0.0",
+        "html_url": "https://git.btclock.dev/btclock/btclock_v4/releases/tag/4.0.0",
+        "body": "Initial v4 release.",
+        "assets": [],
+    }
+    mock_aioresponse.get(v4_release_url, payload=v4_release, repeat=True)
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id=settings["hostname"],
+        data={CONF_HOST: settings["hostname"] + ".local"},
+    )
+    entry.add_to_hass(hass)
+
+    async def _fake_load(self: BtclockClient) -> dict:
+        self._settings = dict(settings)  # noqa: SLF001
+        self._variant = ApiVariant.V3_4  # noqa: SLF001
+        return self._settings  # noqa: SLF001
+
+    with (
+        patch.object(BtclockClient, "async_load_settings", _fake_load),
+        patch.object(
+            BtclockClient,
+            "async_update_status",
+            new=AsyncMock(return_value=load_fixture("status_v4_revb")),
+        ),
+        patch.object(
+            BtclockClient,
+            "async_get_frontlight_status",
+            new=AsyncMock(
+                return_value={"flStatus": [1024, 1024, 1024, 1024, 1024, 1024, 1024]}
+            ),
+        ),
+        patch(
+            "custom_components.btclock.coordinator.BtclockCoordinator.async_start",
+            new=AsyncMock(),
+        ),
+    ):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    state = hass.states.get("update.btclock_v4abcd_firmware")
+    assert state is not None
+    assert state.attributes["installed_version"] == "4.0.0-beta.1"
+    assert state.attributes["latest_version"] == "4.0.0"
+
+
+async def test_update_entity_skipped_for_v4_dirty_build(
+    hass: HomeAssistant, mock_aioresponse, load_fixture
+) -> None:
+    """v4 dirty / past-tag describe output must not surface as installable."""
+    settings = load_fixture("settings_v4_revb").copy()
+    settings["gitRev"] = "4.0.0-3-gabc1234-dirty"
+    await _setup(
+        hass,
+        mock_aioresponse,
+        settings,
+        load_fixture("status_v4_revb"),
+        release={"tag_name": "4.0.0", "body": "x", "assets": []},
+    )
+    assert hass.states.get("update.btclock_v4abcd_firmware") is None
 
 
 async def test_update_entity_skipped_for_commit_hash(

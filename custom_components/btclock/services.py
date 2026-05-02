@@ -18,7 +18,7 @@ from homeassistant.helpers import config_validation as cv, device_registry as dr
 
 from .const import DOMAIN
 from .coordinator import BtclockCoordinator
-from .models import ApiVariant
+from .models import MODERN_VARIANTS
 
 SERVICE_SHOW_TEXT = "show_text"
 SERVICE_SHOW_CUSTOM = "show_custom"
@@ -99,7 +99,7 @@ async def async_register_services(hass: HomeAssistant) -> None:
 
     async def _handle_show_text(call: ServiceCall) -> None:
         coord = _coordinator_for_device(hass, call.data[ATTR_DEVICE_ID])
-        if coord.client.variant is not ApiVariant.V3_4:
+        if coord.client.variant not in MODERN_VARIANTS:
             raise HomeAssistantError(
                 "btclock.show_text requires firmware 3.4.0 or newer"
             )
@@ -114,7 +114,7 @@ async def async_register_services(hass: HomeAssistant) -> None:
 
     async def _handle_show_custom(call: ServiceCall) -> None:
         coord = _coordinator_for_device(hass, call.data[ATTR_DEVICE_ID])
-        if coord.client.variant is not ApiVariant.V3_4:
+        if coord.client.variant not in MODERN_VARIANTS:
             raise HomeAssistantError(
                 "btclock.show_custom requires firmware 3.4.0 or newer"
             )
