@@ -55,17 +55,17 @@ trigger_led_effect:
       selector:
         select:
           options:
-            - blink
-            - blink_success
-            - blink_error
-            - rainbow
-            - breathe
-            - breathe_error
-            - zap
-            - identify
-            - heartbeat
-            - off
-            - idle
+            - "blink"
+            - "blink_success"
+            - "blink_error"
+            - "rainbow"
+            - "breathe"
+            - "breathe_error"
+            - "zap"
+            - "identify"
+            - "heartbeat"
+            - "off"
+            - "idle"
 
 set_frontlight_channels:
   name: Set frontlight channels
@@ -73,11 +73,15 @@ set_frontlight_channels:
   fields:
     device_id:
       name: BTClock
-      description: The BTClock device to target.
+      description: The BTClock device with frontlight support to target.
       required: true
       selector:
         device:
-          integration: btclock
+          entity:
+            integration: btclock
+            domain: light
+            supported_features:
+              - light.LightEntityFeature.FLASH
     duties:
       name: Duties
       description: One 0-4095 PWM duty value per screen, matching the device screen count.

@@ -10,6 +10,8 @@ from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers.service import _SERVICES_SCHEMA
+from homeassistant.util.yaml import load_yaml_dict
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.btclock.api import BtclockClient
@@ -21,6 +23,29 @@ from custom_components.btclock.services import (
     SERVICE_SHOW_TEXT,
     SERVICE_TRIGGER_LED_EFFECT,
 )
+
+
+def test_services_yaml_filters_frontlight_channel_devices() -> None:
+    """The frontlight-channel service picker should only offer frontlight devices."""
+    descriptions = _SERVICES_SCHEMA(
+        load_yaml_dict("custom_components/btclock/services.yaml")
+    )
+    selector = descriptions[SERVICE_SET_FRONTLIGHT_CHANNELS]["fields"]["device_id"][
+        "selector"
+    ]
+
+    assert selector == {
+        "device": {
+            "entity": [
+                {
+                    "integration": DOMAIN,
+                    "domain": ["light"],
+                    "supported_features": [8],
+                }
+            ],
+            "multiple": False,
+        }
+    }
 
 
 async def _setup(

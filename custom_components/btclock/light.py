@@ -6,8 +6,10 @@ from typing import Any
 
 from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
+    ATTR_FLASH,
     ATTR_RGB_COLOR,
     ColorMode,
+    LightEntityFeature,
     LightEntity,
 )
 from homeassistant.core import HomeAssistant, callback
@@ -106,6 +108,7 @@ class BtclockFrontlight(BtclockEntity, LightEntity):
 
     _attr_supported_color_modes = {ColorMode.BRIGHTNESS}
     _attr_color_mode = ColorMode.BRIGHTNESS
+    _attr_supported_features = LightEntityFeature.FLASH
     _attr_translation_key = "frontlight"
 
     def __init__(self, coordinator: BtclockCoordinator) -> None:
@@ -137,6 +140,9 @@ class BtclockFrontlight(BtclockEntity, LightEntity):
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         client = self.coordinator.client
+        if kwargs.get(ATTR_FLASH) is not None:
+            await client.async_frontlight_flash()
+            return
         brightness = kwargs.get(ATTR_BRIGHTNESS)
         raw = (
             int(round(brightness / 255 * self._max_raw))

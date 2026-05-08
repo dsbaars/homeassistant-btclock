@@ -197,7 +197,7 @@
       "fields": {
         "device_id": {
           "name": "BTClock",
-          "description": "The BTClock device to target."
+          "description": "The BTClock device with frontlight support to target."
         },
         "duties": {
           "name": "Duties",

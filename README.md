@@ -47,6 +47,34 @@ The screenshots below are taken from a Rev B device running v4 firmware (the v4-
 |------------------------|------------------------------------------------------------------|
 | `btclock.show_text`    | Display a string across the device's screens (one char each, auto-uppercased, clamped to `numScreens`) |
 | `btclock.show_custom`  | Display one string per screen — handy for symbols or multi-char labels |
+| `btclock.trigger_led_effect` | Trigger one of the v4 firmware's named LED effects |
+
+### LED effects
+
+`btclock.trigger_led_effect` requires v4 firmware. In **Developer Tools → Actions**, choose **BTClock: Trigger LED effect**, select the BTClock device in the device picker, and choose an effect.
+
+Supported effects:
+
+- `blink`
+- `blink_success`
+- `blink_error`
+- `rainbow`
+- `breathe`
+- `breathe_error`
+- `zap`
+- `identify`
+- `heartbeat`
+- `off`
+- `idle`
+
+YAML example:
+
+```yaml
+action: btclock.trigger_led_effect
+data:
+  device_id: YOUR_BTCLOCK_DEVICE_ID
+  effect: heartbeat
+```
 
 ## Firmware updates
 

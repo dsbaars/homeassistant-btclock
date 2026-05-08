@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
 
+from homeassistant.components.light import LightEntityFeature
 from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
@@ -89,6 +90,20 @@ async def test_light_level_sensor_is_not_diagnostic(
     assert len(entries) == 1
     # entity_category=None means it's a primary (non-diagnostic) entity
     assert entries[0].entity_category is None
+
+
+async def test_frontlight_advertises_flash_feature(
+    hass: HomeAssistant, load_fixture
+) -> None:
+    await _setup(
+        hass,
+        load_fixture("settings_v3_4_revb"),
+        load_fixture("status_v3_4_revb"),
+    )
+
+    state = hass.states.get("light.btclock_9d5530_frontlight")
+    assert state is not None
+    assert state.attributes["supported_features"] & LightEntityFeature.FLASH
 
 
 async def test_v2_binary_sensor_is_not_diagnostic(
