@@ -36,6 +36,15 @@ async def v3_4_client(mock_aioresponse):
     await session.close()
 
 
+@pytest.fixture
+async def v4_client(mock_aioresponse):
+    session = aiohttp.ClientSession()
+    client = BtclockClient(HOST, session)
+    client._variant = ApiVariant.V4  # noqa: SLF001
+    yield client
+    await session.close()
+
+
 # ---- timer -------------------------------------------------------------------
 
 
@@ -120,6 +129,26 @@ async def test_v3_4_auto_update_uses_post(mock_aioresponse, v3_4_client) -> None
 async def test_v3_4_lights_off_uses_post(mock_aioresponse, v3_4_client) -> None:
     _expect(mock_aioresponse, "POST", rf"^http://{HOST}/api/lights/off")
     await v3_4_client.async_lights_off()
+
+
+async def test_v4_lights_effect_uses_post(mock_aioresponse, v4_client) -> None:
+    _expect(mock_aioresponse, "POST", rf"^http://{HOST}/api/lights/effect")
+    await v4_client.async_trigger_light_effect("heartbeat")
+
+
+async def test_v3_4_lights_effect_refused(mock_aioresponse, v3_4_client) -> None:
+    with pytest.raises(BtclockError):
+        await v3_4_client.async_trigger_light_effect("heartbeat")
+
+
+async def test_v4_frontlight_set_uses_post(mock_aioresponse, v4_client) -> None:
+    _expect(mock_aioresponse, "POST", rf"^http://{HOST}/api/frontlight/set")
+    await v4_client.async_set_frontlight_channels([0, 512, 1024, 2048])
+
+
+async def test_v3_4_frontlight_set_refused(mock_aioresponse, v3_4_client) -> None:
+    with pytest.raises(BtclockError):
+        await v3_4_client.async_set_frontlight_channels([0, 512, 1024, 2048])
 
 
 # ---- new-API-only actions ----------------------------------------------------

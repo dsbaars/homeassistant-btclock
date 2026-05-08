@@ -36,3 +36,52 @@ show_custom:
       example: "[\"B\", \"I\", \"T\", \"C\", \"O\", \"I\", \"N\"]"
       selector:
         object:
+
+trigger_led_effect:
+  name: Trigger LED effect
+  description: Trigger a named LED effect on BTClock v4 firmware.
+  fields:
+    device_id:
+      name: BTClock
+      description: The BTClock device to target.
+      required: true
+      selector:
+        device:
+          integration: btclock
+    effect:
+      name: Effect
+      description: The firmware LED effect to trigger.
+      required: true
+      selector:
+        select:
+          options:
+            - blink
+            - blink_success
+            - blink_error
+            - rainbow
+            - breathe
+            - breathe_error
+            - zap
+            - identify
+            - heartbeat
+            - off
+            - idle
+
+set_frontlight_channels:
+  name: Set frontlight channels
+  description: Set per-screen frontlight PWM duties on BTClock v4 firmware. Use an empty list to turn all channels off.
+  fields:
+    device_id:
+      name: BTClock
+      description: The BTClock device to target.
+      required: true
+      selector:
+        device:
+          integration: btclock
+    duties:
+      name: Duties
+      description: One 0-4095 PWM duty value per screen, matching the device screen count.
+      required: true
+      example: "[0, 1024, 2048, 3072, 4095, 3072, 2048]"
+      selector:
+        object:

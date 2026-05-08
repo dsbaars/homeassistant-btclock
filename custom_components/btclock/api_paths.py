@@ -37,6 +37,8 @@ type PathEntry = tuple[str, str]
 #  dnd_enable     – enable DND (3.4.0 only)
 #  dnd_disable    – disable DND (3.4.0 only)
 #  frontlight_on / off / flash / brightness / status – 3.4.0 only
+#  frontlight_set – write per-display frontlight duties (v4 only)
+#  lights_effect  – trigger a named LED effect (v4 only)
 
 LEGACY_PATHS: Final[dict[str, PathEntry]] = {
     "settings_get": ("GET", "/api/settings"),
@@ -112,6 +114,9 @@ V4_PATHS: Final[dict[str, PathEntry]] = {
     "wifi_set_tx_power": ("POST", "/api/wifi_set_tx_power"),
     "coredump_get": ("GET", "/api/coredump"),
     "coredump_delete": ("DELETE", "/api/coredump"),
+    # Advanced light controls.
+    "frontlight_set": ("POST", "/api/frontlight/set"),
+    "lights_effect": ("POST", "/api/lights/effect"),
 }
 
 PATHS: Final[dict[ApiVariant, dict[str, PathEntry]]] = {

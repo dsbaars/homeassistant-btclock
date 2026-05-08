@@ -174,6 +174,13 @@ class BtclockClient:
         """Write the full LED array. Length must match device count."""
         await self._request_key("lights_set", json_body=leds, expect_json=False)
 
+    async def async_trigger_light_effect(self, name: str) -> None:
+        """Trigger one of the firmware's named LED effects."""
+        self._require_v4("lights_effect")
+        await self._request_key(
+            "lights_effect", json_body={"name": name}, expect_json=False
+        )
+
     async def async_lights_off(self) -> None:
         await self._request_key("lights_off", expect_json=False)
 
@@ -219,6 +226,11 @@ class BtclockClient:
         await self._request_key(
             "frontlight_bright", params={"b": value}, expect_json=False
         )
+
+    async def async_set_frontlight_channels(self, duties: list[int]) -> None:
+        """Write per-display frontlight PWM duties (v4 diagnostic control)."""
+        self._require_v4("frontlight_set")
+        await self._request_key("frontlight_set", json_body=duties, expect_json=False)
 
     async def async_get_frontlight_status(self) -> dict[str, Any]:
         """Read the dedicated /api/frontlight/status endpoint.

@@ -176,6 +176,34 @@
           "description": "One string per screen. Clamped to the device's number of screens."
         }
       }
+    },
+    "trigger_led_effect": {
+      "name": "Trigger LED effect",
+      "description": "Trigger a named LED effect on BTClock v4 firmware.",
+      "fields": {
+        "device_id": {
+          "name": "BTClock",
+          "description": "The BTClock device to target."
+        },
+        "effect": {
+          "name": "Effect",
+          "description": "The firmware LED effect to trigger."
+        }
+      }
+    },
+    "set_frontlight_channels": {
+      "name": "Set frontlight channels",
+      "description": "Set per-screen frontlight PWM duties on BTClock v4 firmware.",
+      "fields": {
+        "device_id": {
+          "name": "BTClock",
+          "description": "The BTClock device to target."
+        },
+        "duties": {
+          "name": "Duties",
+          "description": "One 0-4095 PWM duty value per screen, matching the device screen count. Use an empty list to turn all channels off."
+        }
+      }
     }
   }
 }

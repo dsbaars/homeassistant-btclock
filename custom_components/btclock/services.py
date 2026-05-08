@@ -1,9 +1,9 @@
 """Integration-level services for BTClock.
 
-These let a user display arbitrary text or per-screen custom content without
-having to touch the HTTP API directly. Both services target a specific device
-via its Home Assistant device_id, look up the loaded config entry, and route
-the call through that device's client.
+These let a user drive focused device actions without touching the HTTP API
+directly. Each service targets a specific device via its Home Assistant
+device_id, looks up the loaded config entry, and routes the call through that
+device's client.
 """
 
 from __future__ import annotations
@@ -18,14 +18,18 @@ from homeassistant.helpers import config_validation as cv, device_registry as dr
 
 from .const import DOMAIN
 from .coordinator import BtclockCoordinator
-from .models import MODERN_VARIANTS
+from .models import ApiVariant, MODERN_VARIANTS
 
 SERVICE_SHOW_TEXT = "show_text"
 SERVICE_SHOW_CUSTOM = "show_custom"
+SERVICE_TRIGGER_LED_EFFECT = "trigger_led_effect"
+SERVICE_SET_FRONTLIGHT_CHANNELS = "set_frontlight_channels"
 
 ATTR_DEVICE_ID = "device_id"
 ATTR_TEXT = "text"
 ATTR_SCREENS = "screens"
+ATTR_EFFECT = "effect"
+ATTR_DUTIES = "duties"
 
 # Static upper bound used only as a guardrail for the YAML widget. All
 # shipping firmware builds today have 7 screens, but some planned variants
@@ -34,6 +38,20 @@ ATTR_SCREENS = "screens"
 # service handler below, so boards that grow a larger screen count never
 # need an integration update.
 _WIDGET_MAX_LEN: int = 16
+
+LED_EFFECT_NAMES: tuple[str, ...] = (
+    "blink",
+    "blink_success",
+    "blink_error",
+    "rainbow",
+    "breathe",
+    "breathe_error",
+    "zap",
+    "identify",
+    "heartbeat",
+    "off",
+    "idle",
+)
 
 
 def _uppercase_text(value: str) -> str:
@@ -58,6 +76,24 @@ _SHOW_CUSTOM_SCHEMA = vol.Schema(
             cv.ensure_list,
             [cv.string],
             vol.Length(min=1, max=_WIDGET_MAX_LEN),
+        ),
+    }
+)
+
+_TRIGGER_LED_EFFECT_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_DEVICE_ID): cv.string,
+        vol.Required(ATTR_EFFECT): vol.In(LED_EFFECT_NAMES),
+    }
+)
+
+_SET_FRONTLIGHT_CHANNELS_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_DEVICE_ID): cv.string,
+        vol.Required(ATTR_DUTIES): vol.All(
+            cv.ensure_list,
+            [vol.All(vol.Coerce(int), vol.Range(min=0, max=4095))],
+            vol.Length(max=_WIDGET_MAX_LEN),
         ),
     }
 )
@@ -97,6 +133,10 @@ async def async_register_services(hass: HomeAssistant) -> None:
     if hass.services.has_service(DOMAIN, SERVICE_SHOW_TEXT):
         return
 
+    def _require_v4(coord: BtclockCoordinator, service_name: str) -> None:
+        if coord.client.variant is not ApiVariant.V4:
+            raise HomeAssistantError(f"btclock.{service_name} requires v4 firmware")
+
     async def _handle_show_text(call: ServiceCall) -> None:
         coord = _coordinator_for_device(hass, call.data[ATTR_DEVICE_ID])
         if coord.client.variant not in MODERN_VARIANTS:
@@ -127,9 +167,43 @@ async def async_register_services(hass: HomeAssistant) -> None:
             )
         await coord.client.async_show_custom(screens)
 
+    async def _handle_trigger_led_effect(call: ServiceCall) -> None:
+        coord = _coordinator_for_device(hass, call.data[ATTR_DEVICE_ID])
+        _require_v4(coord, SERVICE_TRIGGER_LED_EFFECT)
+        await coord.client.async_trigger_light_effect(call.data[ATTR_EFFECT])
+
+    async def _handle_set_frontlight_channels(call: ServiceCall) -> None:
+        coord = _coordinator_for_device(hass, call.data[ATTR_DEVICE_ID])
+        _require_v4(coord, SERVICE_SET_FRONTLIGHT_CHANNELS)
+        if not coord.client.settings.get("hasFrontlight"):
+            raise HomeAssistantError("This BTClock does not have a frontlight")
+        num_screens = _device_num_screens(coord)
+        duties: list[int] = call.data[ATTR_DUTIES]
+        if duties and len(duties) != num_screens:
+            raise HomeAssistantError(
+                f"{len(duties)} frontlight values provided, but this BTClock "
+                f"has {num_screens} screens"
+            )
+        await coord.client.async_set_frontlight_channels(duties)
+        coord.async_apply_optimistic(
+            {"flStatus": duties if duties else [0] * num_screens}
+        )
+
     hass.services.async_register(
         DOMAIN, SERVICE_SHOW_TEXT, _handle_show_text, schema=_SHOW_TEXT_SCHEMA
     )
     hass.services.async_register(
         DOMAIN, SERVICE_SHOW_CUSTOM, _handle_show_custom, schema=_SHOW_CUSTOM_SCHEMA
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_TRIGGER_LED_EFFECT,
+        _handle_trigger_led_effect,
+        schema=_TRIGGER_LED_EFFECT_SCHEMA,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_SET_FRONTLIGHT_CHANNELS,
+        _handle_set_frontlight_channels,
+        schema=_SET_FRONTLIGHT_CHANNELS_SCHEMA,
     )

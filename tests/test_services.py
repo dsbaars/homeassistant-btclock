@@ -15,7 +15,12 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.btclock.api import BtclockClient
 from custom_components.btclock.const import DOMAIN
 from custom_components.btclock.models import ApiVariant
-from custom_components.btclock.services import SERVICE_SHOW_CUSTOM, SERVICE_SHOW_TEXT
+from custom_components.btclock.services import (
+    SERVICE_SET_FRONTLIGHT_CHANNELS,
+    SERVICE_SHOW_CUSTOM,
+    SERVICE_SHOW_TEXT,
+    SERVICE_TRIGGER_LED_EFFECT,
+)
 
 
 async def _setup(
@@ -238,5 +243,114 @@ async def test_show_text_unknown_device_raises(
             DOMAIN,
             SERVICE_SHOW_TEXT,
             {"device_id": "does-not-exist", "text": "HODL"},
+            blocking=True,
+        )
+
+
+async def test_trigger_led_effect_calls_api(
+    hass: HomeAssistant, load_fixture, mock_aioresponse
+) -> None:
+    device_id = await _setup(
+        hass,
+        load_fixture("settings_v4_revb"),
+        load_fixture("status_v4_revb"),
+        variant=ApiVariant.V4,
+        mock_aioresponse=mock_aioresponse,
+    )
+    with patch.object(
+        BtclockClient, "async_trigger_light_effect", new=AsyncMock()
+    ) as mock_call:
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_TRIGGER_LED_EFFECT,
+            {"device_id": device_id, "effect": "heartbeat"},
+            blocking=True,
+        )
+    mock_call.assert_awaited_once_with("heartbeat")
+
+
+async def test_trigger_led_effect_rejects_v3_4(
+    hass: HomeAssistant, load_fixture, mock_aioresponse
+) -> None:
+    device_id = await _setup(
+        hass,
+        load_fixture("settings_v3_4_revb"),
+        load_fixture("status_v3_4_revb"),
+        variant=ApiVariant.V3_4,
+        mock_aioresponse=mock_aioresponse,
+    )
+    with pytest.raises(HomeAssistantError, match="requires v4 firmware"):
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_TRIGGER_LED_EFFECT,
+            {"device_id": device_id, "effect": "heartbeat"},
+            blocking=True,
+        )
+
+
+async def test_set_frontlight_channels_calls_api(
+    hass: HomeAssistant, load_fixture, mock_aioresponse
+) -> None:
+    settings = load_fixture("settings_v4_revb")
+    status = load_fixture("status_v4_revb")
+    device_id = await _setup(
+        hass,
+        settings,
+        status,
+        variant=ApiVariant.V4,
+        mock_aioresponse=mock_aioresponse,
+    )
+    duties = [0, 512, 1024, 2048, 4095, 2048, 1024]
+    with patch.object(
+        BtclockClient, "async_set_frontlight_channels", new=AsyncMock()
+    ) as mock_call:
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_SET_FRONTLIGHT_CHANNELS,
+            {"device_id": device_id, "duties": duties},
+            blocking=True,
+        )
+    mock_call.assert_awaited_once_with(duties)
+
+
+async def test_set_frontlight_channels_rejects_wrong_channel_count(
+    hass: HomeAssistant, load_fixture, mock_aioresponse
+) -> None:
+    device_id = await _setup(
+        hass,
+        load_fixture("settings_v4_revb"),
+        load_fixture("status_v4_revb"),
+        variant=ApiVariant.V4,
+        mock_aioresponse=mock_aioresponse,
+    )
+    with pytest.raises(HomeAssistantError, match="has 7 screens"):
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_SET_FRONTLIGHT_CHANNELS,
+            {"device_id": device_id, "duties": [0, 512]},
+            blocking=True,
+        )
+
+
+async def test_set_frontlight_channels_rejects_no_frontlight(
+    hass: HomeAssistant, load_fixture, mock_aioresponse
+) -> None:
+    settings = load_fixture("settings_v4_revb").copy()
+    settings["hasFrontlight"] = False
+    device_id = await _setup(
+        hass,
+        settings,
+        load_fixture("status_v4_revb"),
+        variant=ApiVariant.V4,
+        mock_aioresponse=mock_aioresponse,
+    )
+    with pytest.raises(HomeAssistantError, match="does not have a frontlight"):
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_SET_FRONTLIGHT_CHANNELS,
+            {
+                "device_id": device_id,
+                "duties": [0, 512, 1024, 2048, 4095, 2048, 1024],
+            },
             blocking=True,
         )

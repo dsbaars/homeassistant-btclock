@@ -1,0 +1,15 @@
+2026-04-20T22:20:05.2900173Z frunner(version:v12.8.2) received task 2378 of job hacs, be triggered by event: push
+2026-04-20T22:20:05.2946087Z workflow prepared
+2026-04-20T22:20:05.2947979Z 🚀  Start image=node:24-bookworm
+2026-04-20T22:20:05.3030775Z The network alias is hacs_validation (sanitized version of HACS Validation)
+2026-04-20T22:20:05.3031887Z   🐳  docker pull image=node:24-bookworm platform=linux/arm64 username= forcePull=false
+2026-04-20T22:20:05.3145067Z Cleaning up network for job HACS Validation, and network name is: WORKFLOW-feab4d5478bcf2214770dcaf33bba597
+2026-04-20T22:20:05.3478667Z   🐳  docker create image=node:24-bookworm platform=linux/arm64 entrypoint=["tail" "-f" "/dev/null"] cmd=[] network="WORKFLOW-feab4d5478bcf2214770dcaf33bba597"
+2026-04-20T22:20:05.3979304Z   🐳  docker run image=node:24-bookworm platform=linux/arm64 entrypoint=["tail" "-f" "/dev/null"] cmd=[] network="WORKFLOW-feab4d5478bcf2214770dcaf33bba597"
+2026-04-20T22:20:05.7316748Z   ☁️  git fetch 'https://data.forgejo.org/actions/checkout' # ref=v4.1.1
+2026-04-20T22:20:05.9611555Z   ☁️  git clone 'https://data.forgejo.org/hacs/action' # ref=main
+2026-04-20T22:20:06.1201653Z ⚙️ [runner]: unable to clone 'https://data.forgejo.org/hacs/action' to '/home/runner/.cache/act/a6/74eea480bfd79c7930710df28bb422ab4ce70d917c908fa9f4fc0456500fef': Cloning into bare repository '/home/runner/.cache/act/a6/74eea480bfd79c7930710df28bb422ab4ce70d917c908fa9f4fc0456500fef'...\nremote: Not found.\nfatal: repository 'https://data.forgejo.org/hacs/action/' not found: exit status 128
+2026-04-20T22:20:06.1202394Z skipping post step for 'Run HACS validation'; step was not executed
+2026-04-20T22:20:06.1202689Z skipping post step for 'Checkout the repository'; step was not executed
+2026-04-20T22:20:06.1328539Z 🏁  Job failed
+2026-04-20T22:20:06.4486501Z unable to clone 'https://data.forgejo.org/hacs/action' to '/home/runner/.cache/act/a6/74eea480bfd79c7930710df28bb422ab4ce70d917c908fa9f4fc0456500fef': Cloning into bare repository '/home/runner/.cache/act/a6/74eea480bfd79c7930710df28bb422ab4ce70d917c908fa9f4fc0456500fef'...\nremote: Not found.\nfatal: repository 'https://data.forgejo.org/hacs/action/' not found: exit status 128

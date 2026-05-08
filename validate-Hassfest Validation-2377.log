@@ -1,0 +1,15 @@
+2026-04-20T22:20:03.2928834Z frunner(version:v12.8.2) received task 2377 of job hassfest, be triggered by event: push
+2026-04-20T22:20:03.2991964Z workflow prepared
+2026-04-20T22:20:03.3000211Z 🚀  Start image=node:24-bookworm
+2026-04-20T22:20:03.3083353Z The network alias is hassfest_validation (sanitized version of Hassfest Validation)
+2026-04-20T22:20:03.3084495Z   🐳  docker pull image=node:24-bookworm platform=linux/arm64 username= forcePull=false
+2026-04-20T22:20:03.3223548Z Cleaning up network for job Hassfest Validation, and network name is: WORKFLOW-0eb1a79826f97af8864462b9d1fc92e3
+2026-04-20T22:20:03.3686502Z   🐳  docker create image=node:24-bookworm platform=linux/arm64 entrypoint=["tail" "-f" "/dev/null"] cmd=[] network="WORKFLOW-0eb1a79826f97af8864462b9d1fc92e3"
+2026-04-20T22:20:03.4283467Z   🐳  docker run image=node:24-bookworm platform=linux/arm64 entrypoint=["tail" "-f" "/dev/null"] cmd=[] network="WORKFLOW-0eb1a79826f97af8864462b9d1fc92e3"
+2026-04-20T22:20:03.7994751Z   ☁️  git fetch 'https://data.forgejo.org/actions/checkout' # ref=v4.1.1
+2026-04-20T22:20:04.0337811Z   ☁️  git clone 'https://data.forgejo.org/home-assistant/actions' # ref=master
+2026-04-20T22:20:04.1782083Z ⚙️ [runner]: unable to clone 'https://data.forgejo.org/home-assistant/actions' to '/home/runner/.cache/act/bf/d36796803418db0b9f80d1e6fb743ac11afb02ef35881cabb0ff1f504b1956': Cloning into bare repository '/home/runner/.cache/act/bf/d36796803418db0b9f80d1e6fb743ac11afb02ef35881cabb0ff1f504b1956'...\nremote: Not found.\nfatal: repository 'https://data.forgejo.org/home-assistant/actions/' not found: exit status 128
+2026-04-20T22:20:04.1782870Z skipping post step for 'Run hassfest validation'; step was not executed
+2026-04-20T22:20:04.1783296Z skipping post step for 'Checkout the repository'; step was not executed
+2026-04-20T22:20:04.1934563Z 🏁  Job failed
+2026-04-20T22:20:04.5108780Z unable to clone 'https://data.forgejo.org/home-assistant/actions' to '/home/runner/.cache/act/bf/d36796803418db0b9f80d1e6fb743ac11afb02ef35881cabb0ff1f504b1956': Cloning into bare repository '/home/runner/.cache/act/bf/d36796803418db0b9f80d1e6fb743ac11afb02ef35881cabb0ff1f504b1956'...\nremote: Not found.\nfatal: repository 'https://data.forgejo.org/home-assistant/actions/' not found: exit status 128
