@@ -64,7 +64,18 @@ def _nostr_relay(c: BtclockCoordinator) -> str | None:
 
 def _nostr_relay_attrs(c: BtclockCoordinator) -> Mapping[str, Any]:
     cs = c.data.get("connectionStatus") or {}
-    return {"connected": bool(cs.get("nostr"))}
+    nostr = cs.get("nostr")
+    if isinstance(nostr, list):
+        # v4 ≥ rc.4: per-relay status array. Expose each relay's state and a
+        # rolled-up `connected` flag (any relay up).
+        return {
+            "connected": any(relay.get("connected") for relay in nostr),
+            "relays": [
+                {"url": relay.get("url"), "connected": bool(relay.get("connected"))}
+                for relay in nostr
+            ],
+        }
+    return {"connected": bool(nostr)}
 
 
 SENSORS: tuple[BtclockSensorDescription, ...] = (
@@ -130,6 +141,15 @@ SENSORS: tuple[BtclockSensorDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda c: c.data.get("espFreeHeap"),
+    ),
+    # v4: device WiFi MAC (settings field, readonly).
+    BtclockSensorDescription(
+        key="wifi_mac",
+        translation_key="wifi_mac",
+        icon="mdi:network-pos",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda c: c.client.settings.get("wifiMac"),
+        available_fn=lambda c: bool(c.client.settings.get("wifiMac")),
     ),
 )
 

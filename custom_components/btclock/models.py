@@ -52,13 +52,36 @@ class LedDict(TypedDict, total=False):
     hex: str
 
 
+class NostrRelayStatus(TypedDict, total=False):
+    """One relay's live state in connectionStatus.nostr (v4 ≥ rc.4)."""
+
+    url: str
+    connected: bool
+
+
 class ConnectionStatus(TypedDict, total=False):
     """status.connectionStatus block."""
 
     price: bool
     blocks: bool
     V2: bool
-    nostr: bool
+    # Pre-rc.4 firmware emitted `nostr` as a single bool; v4 ≥ rc.4 emits a
+    # per-relay array. Use `nostr_connected()` to read it shape-agnostically.
+    nostr: bool | list[NostrRelayStatus]
+    nwc: bool  # v4: live NIP-47 Nostr Wallet Connect state
+
+
+def nostr_connected(cs: ConnectionStatus | None) -> bool | None:
+    """Collapse connectionStatus.nostr to a single connected flag.
+
+    v4 (≥ rc.4) reports `nostr` as a per-relay array of `{url, connected}`;
+    older firmware reports a single bool. Returns True if any relay is up,
+    the bool as-is on legacy shape, or None when the field is absent.
+    """
+    nostr = (cs or {}).get("nostr")
+    if isinstance(nostr, list):
+        return any(relay.get("connected") for relay in nostr)
+    return nostr
 
 
 class DndStatus(TypedDict, total=False):
@@ -182,9 +205,18 @@ class Settings(TypedDict, total=False):
     stealFocus: bool
     useSatsSymbol: bool  # v3 only; v4 replaces it with priceSymMode
     priceSymMode: int  # v4: 0 none, 1 Satoshi symbol, 2 bitcoin sign ₿
+    decimalShareDot: bool  # v4 rename of v3 suffixShareDot
     fontName: str
     availableFonts: list[str] | list[AvailableFont]  # v3: strings; v4: objects
     availablePools: list[str]
+    wifiMac: str  # v4: device WiFi MAC (readonly)
+    # Nostr Wallet Connect (NIP-47), v4 only.
+    nwcEnabled: bool  # master toggle (boot-only)
+    nwcRefreshSecs: int  # balance poll cadence, 15..3600 (boot-only)
+    nwcShowNotify: bool  # show the on-screen payment overlay (live)
+    nwcFlashOnPay: bool  # LED/frontlight pulse on payment (live)
+    nwcUriSet: bool  # readonly: a pairing URI is stored
+    nwcUriMasked: str  # readonly: redacted fingerprint of the pairing URI
     gitReleaseUrl: str
     tzString: str
     dnd: DndSettings

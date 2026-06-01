@@ -13,7 +13,11 @@
     "price": true,
     "blocks": true,
     "V2": false,
-    "nostr": false
+    "nostr": [
+      { "url": "wss://relay.primal.net", "connected": true },
+      { "url": "wss://relay.damus.io", "connected": false }
+    ],
+    "nwc": true
   },
   "rssi": -52,
   "currency": "USD",

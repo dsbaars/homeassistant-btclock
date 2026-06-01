@@ -11,12 +11,13 @@ from homeassistant.components.binary_sensor import (
     BinarySensorEntityDescription,
 )
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import BtclockConfigEntry
 from .coordinator import BtclockCoordinator
 from .entity import BtclockEntity
-from .models import DataSource
+from .models import DataSource, nostr_connected
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -44,7 +45,7 @@ def _price_feed_connected(c: BtclockCoordinator) -> bool | None:
         case DataSource.THIRD_PARTY:
             return cs.get("price")
         case DataSource.NOSTR:
-            return cs.get("nostr")
+            return nostr_connected(cs)
         case _:
             return cs.get("V2")
 
@@ -55,7 +56,7 @@ def _blocks_feed_connected(c: BtclockCoordinator) -> bool | None:
         case DataSource.THIRD_PARTY:
             return cs.get("blocks")
         case DataSource.NOSTR:
-            return cs.get("nostr")
+            return nostr_connected(cs)
         case _:
             return cs.get("V2")
 
@@ -90,6 +91,15 @@ BINARY_SENSORS: tuple[BtclockBinarySensorDescription, ...] = (
         translation_key="dnd_active",
         value_fn=lambda c: (c.data.get("dnd") or {}).get("active"),
         available_fn=lambda c: "dnd" in (c.data or {}),
+    ),
+    # v4: Nostr Wallet Connect (NIP-47) live link. Only on NWC-capable builds.
+    BtclockBinarySensorDescription(
+        key="nwc_connected",
+        translation_key="nwc_connected",
+        device_class=BinarySensorDeviceClass.CONNECTIVITY,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda c: (c.data.get("connectionStatus") or {}).get("nwc"),
+        available_fn=lambda c: c.client.settings.get("nwcEnabled") is not None,
     ),
 )
 

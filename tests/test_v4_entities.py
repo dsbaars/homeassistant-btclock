@@ -279,6 +279,10 @@ async def test_v4_settings_switches_absent_on_v3_4(
         "mow_mode",
         "use_sats_symbol",
         "hide_leading_zero_on_hours",
+        "decimal_share_separator",
+        "nostr_wallet_connect",
+        "show_payment_notifications",
+        "flash_on_payment",
     ):
         assert hass.states.get(f"switch.btclock_9d5530_{key}") is None
 
@@ -322,6 +326,115 @@ async def test_v4_pool_poll_sec_appears_when_setting_present(
     )
     assert hass.states.get("number.btclock_v4abcd_bitaxe_poll_interval") is not None
     assert hass.states.get("number.btclock_v4abcd_full_refresh_interval") is not None
+
+
+# ---- Nostr Wallet Connect + misc v4 ---------------------------------------
+
+
+async def test_nwc_entities_appear_on_v4(
+    hass: HomeAssistant, mock_aioresponse, load_fixture
+) -> None:
+    """The v4 fixture wires NWC — its switches, the balance-poll number and
+    the connectivity binary sensor must all surface."""
+    await _setup(
+        hass,
+        mock_aioresponse,
+        load_fixture("settings_v4_revb"),
+        load_fixture("status_v4_revb"),
+        variant=ApiVariant.V4,
+    )
+    assert hass.states.get("switch.btclock_v4abcd_nostr_wallet_connect") is not None
+    assert (
+        hass.states.get("switch.btclock_v4abcd_show_payment_notifications") is not None
+    )
+    assert hass.states.get("switch.btclock_v4abcd_flash_on_payment") is not None
+    assert (
+        hass.states.get("number.btclock_v4abcd_nwc_balance_poll_interval") is not None
+    )
+    nwc = hass.states.get("binary_sensor.btclock_v4abcd_nostr_wallet_connect")
+    assert nwc is not None
+    assert nwc.state == "on"  # connectionStatus.nwc is true in the fixture
+
+
+async def test_nwc_connected_absent_on_v3_4(
+    hass: HomeAssistant, mock_aioresponse, load_fixture
+) -> None:
+    await _setup(
+        hass,
+        mock_aioresponse,
+        load_fixture("settings_v3_4_revb"),
+        load_fixture("status_v3_4_revb"),
+        variant=ApiVariant.V3_4,
+    )
+    assert hass.states.get("binary_sensor.btclock_9d5530_nostr_wallet_connect") is None
+    assert hass.states.get("number.btclock_9d5530_nwc_balance_poll_interval") is None
+
+
+async def test_decimal_share_dot_switch_appears_on_v4(
+    hass: HomeAssistant, mock_aioresponse, load_fixture
+) -> None:
+    await _setup(
+        hass,
+        mock_aioresponse,
+        load_fixture("settings_v4_revb"),
+        load_fixture("status_v4_revb"),
+        variant=ApiVariant.V4,
+    )
+    assert hass.states.get("switch.btclock_v4abcd_decimal_share_separator") is not None
+
+
+async def test_wifi_mac_sensor_appears_on_v4_only(
+    hass: HomeAssistant, mock_aioresponse, load_fixture
+) -> None:
+    await _setup(
+        hass,
+        mock_aioresponse,
+        load_fixture("settings_v4_revb"),
+        load_fixture("status_v4_revb"),
+        variant=ApiVariant.V4,
+    )
+    state = hass.states.get("sensor.btclock_v4abcd_wifi_mac_address")
+    assert state is not None
+    assert state.state == "aa:bb:cc:dd:ee:ff"
+
+
+async def test_wifi_mac_sensor_absent_without_setting(
+    hass: HomeAssistant, mock_aioresponse, load_fixture
+) -> None:
+    await _setup(
+        hass,
+        mock_aioresponse,
+        load_fixture("settings_v3_4_revb"),
+        load_fixture("status_v3_4_revb"),
+        variant=ApiVariant.V3_4,
+    )
+    assert hass.states.get("sensor.btclock_9d5530_wifi_mac_address") is None
+
+
+async def test_stop_datasources_button_v4_only(
+    hass: HomeAssistant, mock_aioresponse, load_fixture
+) -> None:
+    await _setup(
+        hass,
+        mock_aioresponse,
+        load_fixture("settings_v4_revb"),
+        load_fixture("status_v4_revb"),
+        variant=ApiVariant.V4,
+    )
+    assert hass.states.get("button.btclock_v4abcd_stop_data_sources") is not None
+
+
+async def test_stop_datasources_button_absent_on_v3_4(
+    hass: HomeAssistant, mock_aioresponse, load_fixture
+) -> None:
+    await _setup(
+        hass,
+        mock_aioresponse,
+        load_fixture("settings_v3_4_revb"),
+        load_fixture("status_v3_4_revb"),
+        variant=ApiVariant.V3_4,
+    )
+    assert hass.states.get("button.btclock_9d5530_stop_data_sources") is None
 
 
 # ---- API client gating ----------------------------------------------------

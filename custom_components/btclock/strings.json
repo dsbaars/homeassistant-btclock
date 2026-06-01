@@ -80,7 +80,8 @@
       "blocks_connected": { "name": "Blocks feed" },
       "v2_connected":     { "name": "V2 relay" },
       "timer_running":    { "name": "Screen timer" },
-      "dnd_active":       { "name": "Do-not-disturb active" }
+      "dnd_active":       { "name": "Do-not-disturb active" },
+      "nwc_connected":    { "name": "Nostr Wallet Connect" }
     },
     "button": {
       "identify":            { "name": "Identify" },
@@ -91,7 +92,8 @@
       "frontlight_flash":    { "name": "Flash frontlight" },
       "simulate_zap":        { "name": "Simulate Nostr Zap" },
       "clear_pool_logos":    { "name": "Clear cached pool logos" },
-      "restart_datasources": { "name": "Restart data sources" }
+      "restart_datasources": { "name": "Restart data sources" },
+      "stop_datasources":    { "name": "Stop data sources" }
     },
     "light": {
       "led":        { "name": "LED {index}" },
@@ -112,6 +114,7 @@
       "uptime":         { "name": "Uptime" },
       "free_heap":      { "name": "Free heap" },
       "light_level":    { "name": "Ambient light level" },
+      "wifi_mac":       { "name": "WiFi MAC address" },
       "ota_state":      {
         "name": "OTA state",
         "state": { "idle": "Idle", "updating": "Updating" }
@@ -133,7 +136,11 @@
       "use_sats_symbol":    { "name": "Use sats symbol" },
       "use_block_countdown": { "name": "Show block countdown" },
       "hide_lead_zero":     { "name": "Hide leading zero on hours" },
-      "inverted_color":     { "name": "Invert display colors" }
+      "inverted_color":     { "name": "Invert display colors" },
+      "decimal_share_dot":  { "name": "Decimal share separator" },
+      "nwc_enabled":        { "name": "Nostr Wallet Connect" },
+      "nwc_show_notify":    { "name": "Show payment notifications" },
+      "nwc_flash_on_pay":   { "name": "Flash on payment" }
     },
     "time": {
       "dnd_start": { "name": "Do-not-disturb start" },
@@ -143,7 +150,8 @@
       "led_brightness":   { "name": "LED brightness" },
       "bitaxe_poll_sec":  { "name": "Bitaxe poll interval" },
       "pool_poll_sec":    { "name": "Mining pool poll interval" },
-      "full_refresh_min": { "name": "Full refresh interval" }
+      "full_refresh_min": { "name": "Full refresh interval" },
+      "nwc_refresh_sec":  { "name": "NWC balance poll interval" }
     },
     "update": {
       "firmware": { "name": "Firmware" }

@@ -100,6 +100,13 @@ BUTTONS: tuple[BtclockButtonDescription, ...] = (
         press_fn=lambda c: c.client.async_restart_datasources(),
         path_key="restart_datasources",
     ),
+    BtclockButtonDescription(
+        key="stop_datasources",
+        translation_key="stop_datasources",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        press_fn=lambda c: c.client.async_stop_datasources(),
+        path_key="stop_datasources",
+    ),
 )
 
 

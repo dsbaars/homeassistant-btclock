@@ -75,6 +75,9 @@
     "b5127a08cf33616274800a4387881a9f98e04b9c37116e92de5250498635c422"
   ],
   "nwcEnabled": true,
+  "nwcRefreshSecs": 60,
+  "nwcShowNotify": true,
+  "nwcFlashOnPay": false,
   "nwcUriSet": true,
   "nwcUriMasked": "nostr+walletconnect://b51…c422?relay=wss%3A%2F%2Frelay",
   "ledFlashOnZap": true,

@@ -77,6 +77,29 @@ async def test_nostr_relay_sensor_falls_back_to_relays_array(
     assert state.state == "wss://relay.damus.io"
 
 
+async def test_nostr_relay_sensor_exposes_per_relay_array(
+    hass: HomeAssistant, load_fixture
+) -> None:
+    """v4 reports `connectionStatus.nostr` as a per-relay array — the sensor
+    must roll it up to a single `connected` flag and expose each relay."""
+    status = load_fixture("status_v3_4_revb").copy()
+    status["connectionStatus"] = {
+        "nostr": [
+            {"url": "wss://relay.primal.net", "connected": False},
+            {"url": "wss://relay.damus.io", "connected": True},
+        ],
+    }
+    await _setup(hass, load_fixture("settings_v3_4_revb"), status)
+
+    state = hass.states.get("sensor.btclock_9d5530_nostr_relay")
+    assert state is not None
+    assert state.attributes.get("connected") is True  # any relay up
+    assert state.attributes.get("relays") == [
+        {"url": "wss://relay.primal.net", "connected": False},
+        {"url": "wss://relay.damus.io", "connected": True},
+    ]
+
+
 async def test_ota_state_sensor_reports_idle_or_updating(
     hass: HomeAssistant, load_fixture
 ) -> None:

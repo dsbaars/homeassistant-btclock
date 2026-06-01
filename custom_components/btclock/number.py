@@ -88,6 +88,21 @@ SETTINGS_NUMBERS: tuple[BtclockSettingsNumberDescription, ...] = (
         setting_key="fullRefreshMin",
         available_fn=_setting_present("fullRefreshMin"),
     ),
+    # v4 Nostr Wallet Connect balance poll cadence. Boot-only on the device,
+    # but the value persists and arms the esp_timer at the next restart.
+    BtclockSettingsNumberDescription(
+        key="nwc_refresh_sec",
+        translation_key="nwc_refresh_sec",
+        icon="mdi:timer-cog-outline",
+        native_min_value=15,
+        native_max_value=3600,
+        native_step=1,
+        native_unit_of_measurement=UnitOfTime.SECONDS,
+        entity_category=EntityCategory.CONFIG,
+        mode=NumberMode.BOX,
+        setting_key="nwcRefreshSecs",
+        available_fn=_setting_present("nwcRefreshSecs"),
+    ),
 )
 
 

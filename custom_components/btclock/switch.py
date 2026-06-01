@@ -273,6 +273,38 @@ SETTINGS_SWITCHES: tuple[BtclockSettingsSwitchDescription, ...] = (
         setting_key="invertedColor",
         available_fn=_setting_present("invertedColor"),
     ),
+    BtclockSettingsSwitchDescription(
+        key="decimal_share_dot",
+        translation_key="decimal_share_dot",
+        icon="mdi:circle-small",
+        setting_key="decimalShareDot",
+        available_fn=_setting_present("decimalShareDot"),
+    ),
+    # ---- v4 Nostr Wallet Connect (NIP-47) ----
+    # `nwcEnabled` is boot-only on the device (PATCH returns rebootRequired);
+    # the toggle still persists and takes effect on the next restart. The
+    # notify/flash toggles are applied live.
+    BtclockSettingsSwitchDescription(
+        key="nwc_enabled",
+        translation_key="nwc_enabled",
+        icon="mdi:wallet-bifold-outline",
+        setting_key="nwcEnabled",
+        available_fn=_setting_present("nwcEnabled"),
+    ),
+    BtclockSettingsSwitchDescription(
+        key="nwc_show_notify",
+        translation_key="nwc_show_notify",
+        icon="mdi:bell-ring-outline",
+        setting_key="nwcShowNotify",
+        available_fn=_setting_present("nwcShowNotify"),
+    ),
+    BtclockSettingsSwitchDescription(
+        key="nwc_flash_on_pay",
+        translation_key="nwc_flash_on_pay",
+        icon="mdi:flash-outline",
+        setting_key="nwcFlashOnPay",
+        available_fn=_setting_present("nwcFlashOnPay"),
+    ),
 )
 
 

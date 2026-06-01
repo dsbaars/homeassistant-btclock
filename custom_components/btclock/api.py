@@ -275,6 +275,11 @@ class BtclockClient:
         self._require_v4("restart_datasources")
         await self._request_key("restart_datasources", expect_json=False)
 
+    async def async_stop_datasources(self) -> None:
+        """Stop upstream price/block feeds without rebooting the device."""
+        self._require_v4("stop_datasources")
+        await self._request_key("stop_datasources", expect_json=False)
+
     # ---- Internals --------------------------------------------------------------
 
     def _require_modern(self, key: str) -> None:

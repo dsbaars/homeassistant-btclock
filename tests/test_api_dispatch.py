@@ -195,6 +195,19 @@ async def test_v3_4_frontlight_set_refused(mock_aioresponse, v3_4_client) -> Non
         await v3_4_client.async_set_frontlight_channels([0, 512, 1024, 2048])
 
 
+# ---- datasources (v4-only) ---------------------------------------------------
+
+
+async def test_v4_stop_datasources_uses_post(mock_aioresponse, v4_client) -> None:
+    _expect(mock_aioresponse, "POST", rf"^http://{HOST}/api/stop_datasources")
+    await v4_client.async_stop_datasources()
+
+
+async def test_v3_4_stop_datasources_refused(mock_aioresponse, v3_4_client) -> None:
+    with pytest.raises(BtclockError):
+        await v3_4_client.async_stop_datasources()
+
+
 async def test_v4_frontlight_brightness_uses_json_body(
     mock_aioresponse, v4_client
 ) -> None:

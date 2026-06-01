@@ -90,6 +90,34 @@ async def _setup(hass: HomeAssistant, settings: dict, status: dict) -> str:
             False,
             False,
         ),
+        # v4 ≥ rc.4: `nostr` is a per-relay array. Connected = any relay up.
+        (
+            DataSource.NOSTR,
+            {
+                "V2": False,
+                "nostr": [
+                    {"url": "wss://a", "connected": False},
+                    {"url": "wss://b", "connected": True},
+                ],
+            },
+            True,
+            True,
+        ),
+        # All relays down → not connected (the bug: an array is always truthy).
+        (
+            DataSource.NOSTR,
+            {
+                "V2": True,
+                "nostr": [
+                    {"url": "wss://a", "connected": False},
+                    {"url": "wss://b", "connected": False},
+                ],
+            },
+            False,
+            False,
+        ),
+        # Empty array (no relays wired) → not connected.
+        (DataSource.NOSTR, {"V2": True, "nostr": []}, False, False),
     ],
 )
 async def test_price_blocks_feed_follows_datasource(
