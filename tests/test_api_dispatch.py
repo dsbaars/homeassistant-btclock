@@ -279,3 +279,32 @@ async def test_v3_4_settings_patch_uses_main_path() -> None:
     from custom_components.btclock.api_paths import V3_4_PATHS
 
     assert V3_4_PATHS["settings_patch"] == ("PATCH", "/api/settings")
+
+
+# End-to-end: a settings write must hit the URL the firmware of that era
+# actually registers. ≤3.3.19 serves the write on /api/json/settings (any
+# method); 3.4.0+ moved it to PATCH /api/settings and dropped the json route.
+# Verified against btclock_v3 webserver source at tags 3.3.19 and 3.4.0.
+
+
+async def test_legacy_patch_settings_hits_json_settings(
+    mock_aioresponse, legacy_client
+) -> None:
+    _expect(mock_aioresponse, "PATCH", rf"^http://{HOST}/api/json/settings$")
+    await legacy_client.async_patch_settings({"ledBrightness": 100})
+    kwargs = _recorded_kwargs(mock_aioresponse, "PATCH", "/api/json/settings")
+    assert kwargs.get("json") == {"ledBrightness": 100}
+
+
+async def test_v3_4_patch_settings_hits_settings(mock_aioresponse, v3_4_client) -> None:
+    _expect(mock_aioresponse, "PATCH", rf"^http://{HOST}/api/settings$")
+    await v3_4_client.async_patch_settings({"ledBrightness": 100})
+    kwargs = _recorded_kwargs(mock_aioresponse, "PATCH", "/api/settings")
+    assert kwargs.get("json") == {"ledBrightness": 100}
+
+
+async def test_v4_patch_settings_hits_settings(mock_aioresponse, v4_client) -> None:
+    _expect(mock_aioresponse, "PATCH", rf"^http://{HOST}/api/settings$")
+    await v4_client.async_patch_settings({"ledBrightness": 100})
+    kwargs = _recorded_kwargs(mock_aioresponse, "PATCH", "/api/settings")
+    assert kwargs.get("json") == {"ledBrightness": 100}

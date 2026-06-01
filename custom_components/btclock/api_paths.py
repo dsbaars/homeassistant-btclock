@@ -42,6 +42,13 @@ type PathEntry = tuple[str, str]
 
 LEGACY_PATHS: Final[dict[str, PathEntry]] = {
     "settings_get": ("GET", "/api/settings"),
+    # Settings writes land on /api/json/settings up to and including 3.3.19
+    # (the last 3.3.x). That route is an AsyncCallbackJsonWebHandler registered
+    # with no setMethod(), so it accepts PATCH (and POST). 3.4.0 replaced it
+    # with `setMethod(HTTP_PATCH)` on /api/settings and dropped the json route
+    # entirely — see V3_4_PATHS. Verified against btclock_v3 firmware source
+    # src/lib/webserver.cpp @ tag 3.3.19 vs src/lib/net/webserver/settings.cpp
+    # @ tag 3.4.0.
     "settings_patch": ("PATCH", "/api/json/settings"),
     "status": ("GET", "/api/status"),
     "system_status": ("GET", "/api/system_status"),
@@ -66,6 +73,8 @@ LEGACY_PATHS: Final[dict[str, PathEntry]] = {
 
 V3_4_PATHS: Final[dict[str, PathEntry]] = {
     "settings_get": ("GET", "/api/settings"),
+    # 3.4.0+ moved settings writes here (PATCH-only) and removed the legacy
+    # /api/json/settings route. See LEGACY_PATHS for the firmware provenance.
     "settings_patch": ("PATCH", "/api/settings"),
     "status": ("GET", "/api/status"),
     "system_status": ("GET", "/api/system_status"),
