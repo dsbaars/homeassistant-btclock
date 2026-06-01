@@ -35,6 +35,7 @@ def test_v3_4_authed_fixture_detects_as_v3_4(load_fixture) -> None:
         ("4.0.0-beta.1", ApiVariant.V4),
         ("v4.1.2", ApiVariant.V4),
         ("3.3.19", ApiVariant.LEGACY),
+        ("3.3.15", ApiVariant.LEGACY),  # webui bf339038 / firmware 3.3.15
         ("3.0.0", ApiVariant.LEGACY),
         ("", ApiVariant.LEGACY),
         ("garbage", ApiVariant.LEGACY),
