@@ -50,7 +50,16 @@ def _ota_state(c: BtclockCoordinator) -> str:
 
 
 def _nostr_relay(c: BtclockCoordinator) -> str | None:
-    return c.client.settings.get("nostrRelay") or None
+    """Return the primary Nostr relay URL.
+
+    v4 firmware deprecated the single `nostrRelay` string in favour of a
+    `nostrRelays` array (up to 4 entries); it may stop emitting the legacy
+    field, so fall back to the first configured relay in the array.
+    """
+    settings = c.client.settings
+    if relay := settings.get("nostrRelay"):
+        return relay
+    return next((r for r in settings.get("nostrRelays") or [] if r), None)
 
 
 def _nostr_relay_attrs(c: BtclockCoordinator) -> Mapping[str, Any]:
@@ -77,7 +86,7 @@ SENSORS: tuple[BtclockSensorDescription, ...] = (
         icon="mdi:satellite-variant",
         value_fn=_nostr_relay,
         attrs_fn=_nostr_relay_attrs,
-        available_fn=lambda c: bool(c.client.settings.get("nostrRelay")),
+        available_fn=lambda c: bool(_nostr_relay(c)),
     ),
     BtclockSensorDescription(
         key="light_level",

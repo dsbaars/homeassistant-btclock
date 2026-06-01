@@ -98,10 +98,11 @@
       "frontlight": { "name": "Frontlight" }
     },
     "select": {
-      "screen":      { "name": "Screen" },
-      "currency":    { "name": "Currency" },
-      "mining_pool": { "name": "Mining pool" },
-      "font":        { "name": "Display font" }
+      "screen":       { "name": "Screen" },
+      "currency":     { "name": "Currency" },
+      "mining_pool":  { "name": "Mining pool" },
+      "font":         { "name": "Display font" },
+      "price_symbol": { "name": "Price symbol" }
     },
     "sensor": {
       "current_screen": { "name": "Current screen" },

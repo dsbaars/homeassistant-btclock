@@ -49,8 +49,15 @@
   ],
   "actCurrencies": ["USD", "EUR"],
   "availableCurrencies": ["USD", "EUR", "GBP", "JPY"],
-  "availableFonts": ["antonio", "oswald"],
+  "fontName": "antonio",
+  "availableFonts": [
+    { "id": "antonio", "hasBtcSymbol": true },
+    { "id": "oswald", "hasBtcSymbol": false }
+  ],
   "availablePools": ["noderunners", "ocean", "braiins"],
+  "priceSymMode": 1,
+  "decimalShareDot": false,
+  "wifiMac": "aa:bb:cc:dd:ee:ff",
   "dnd": {
     "enabled": false,
     "dndTimeEnabled": false,
@@ -60,9 +67,16 @@
     "endMinute": 0
   },
   "nostrRelay": "wss://relay.primal.net",
+  "nostrRelays": ["wss://relay.primal.net", "wss://relay.damus.io"],
   "nostrPubKey": "642317135fd4c4205323b9dea8af3270657e62d51dc31a657c0ec8aab31c6288",
   "nostrZapNotify": false,
   "nostrZapPubkey": "b5127a08cf33616274800a4387881a9f98e04b9c37116e92de5250498635c422",
+  "nostrZapPubkeys": [
+    "b5127a08cf33616274800a4387881a9f98e04b9c37116e92de5250498635c422"
+  ],
+  "nwcEnabled": true,
+  "nwcUriSet": true,
+  "nwcUriMasked": "nostr+walletconnect://b51…c422?relay=wss%3A%2F%2Frelay",
   "ledFlashOnZap": true,
   "ledFlashOnUpd": true,
   "stealFocus": true

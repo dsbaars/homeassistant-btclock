@@ -137,9 +137,7 @@ class BtclockClient:
 
     async def async_set_screen(self, screen_id: int) -> None:
         if self.variant in MODERN_VARIANTS:
-            await self._request_key(
-                "show_screen", params={"s": screen_id}, expect_json=False
-            )
+            await self._request_scalar("show_screen", "s", screen_id)
         else:
             await self._request_key("show_screen", fmt=(screen_id,), expect_json=False)
 
@@ -153,12 +151,12 @@ class BtclockClient:
 
     async def async_set_currency(self, code: str) -> None:
         self._require_modern("show_currency")
-        await self._request_key("show_currency", params={"c": code}, expect_json=False)
+        await self._request_scalar("show_currency", "c", code)
 
     async def async_show_text(self, text: str) -> None:
         """Display `text` across all screens, one character per screen."""
         self._require_modern("show_text")
-        await self._request_key("show_text", params={"t": text}, expect_json=False)
+        await self._request_scalar("show_text", "t", text)
 
     async def async_show_custom(self, screens: list[str]) -> None:
         """Display one string per screen (array body, clamped to numScreens)."""
@@ -223,9 +221,7 @@ class BtclockClient:
 
     async def async_frontlight_brightness(self, value: int) -> None:
         self._require_modern("frontlight_bright")
-        await self._request_key(
-            "frontlight_bright", params={"b": value}, expect_json=False
-        )
+        await self._request_scalar("frontlight_bright", "b", value)
 
     async def async_set_frontlight_channels(self, duties: list[int]) -> None:
         """Write per-display frontlight PWM duties (v4 diagnostic control)."""
@@ -295,6 +291,21 @@ class BtclockClient:
         _, template = PATHS[variant][key]
         path = template.format(*fmt) if fmt else template
         return f"http://{self._host}{path}"
+
+    async def _request_scalar(self, key: str, name: str, value: Any) -> None:
+        """Send a single named scalar to a POST endpoint, the v4 way.
+
+        v4 firmware's canonical form is a JSON body `{name: value}`; it still
+        honours the legacy `?name=` query string for most of these for
+        backward compatibility, but we send the documented body so we don't
+        lean on a shim that may be dropped (and that /api/frontlight/brightness
+        already lacks). v3.4/legacy firmware only read the query param, so
+        dispatch on the variant.
+        """
+        if self._variant is ApiVariant.V4:
+            await self._request_key(key, json_body={name: value}, expect_json=False)
+        else:
+            await self._request_key(key, params={name: value}, expect_json=False)
 
     async def _request_key(
         self,

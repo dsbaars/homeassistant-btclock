@@ -1,8 +1,12 @@
 """Typed shapes for the BTClock HTTP API.
 
-These mirror the 3.4.0 Swagger (https://git.btclock.dev/btclock/webui/raw/branch/feature/3.4.0/static/swagger.json)
-but use `total=False` so they also accept legacy-firmware responses, which
-omit some newer fields (httpAuthPassSet, ceEndpoint, hasFrontlight, …).
+These mirror the published OpenAPI specs — v3
+(https://git.btclock.dev/btclock/webui/src/branch/v3/static/openapi.yml) and v4
+(https://git.btclock.dev/btclock/webui/src/branch/v4/static/openapi.yml) — but
+use `total=False` so a single TypedDict accepts every firmware generation:
+legacy responses omit newer fields (httpAuthPassSet, ceEndpoint, hasFrontlight,
+…), while v4 renames/reshapes a few (priceSymMode, nostrRelays, the
+`availableFonts` object list, and the nested `frontlight` status block).
 """
 
 from __future__ import annotations
@@ -67,6 +71,20 @@ class DndStatus(TypedDict, total=False):
     active: bool
 
 
+class Frontlight(TypedDict, total=False):
+    """status.frontlight block (v4 only).
+
+    v4 firmware nests live frontlight state here instead of the flat
+    `flStatus` array v3.x emits. `coordinator._normalize_frontlight` maps
+    `duties` back onto `flStatus` so the light entity has one shape to read.
+    """
+
+    on: bool
+    duties: list[int]  # per-panel 12-bit duty (0..4095)
+    targetDuty: int
+    configuredBrightness: int
+
+
 class Status(TypedDict, total=False):
     """Shape of GET /api/status and the SSE `status` event payload."""
 
@@ -83,7 +101,8 @@ class Status(TypedDict, total=False):
     data: list[str]
     leds: list[LedDict]
     dnd: DndStatus
-    flStatus: list[int]
+    flStatus: list[int]  # v3.x; v4 nests this under `frontlight.duties`
+    frontlight: Frontlight  # v4 only
     lightLevel: int
 
 
@@ -94,6 +113,18 @@ class Screen(TypedDict, total=False):
     name: str
     enabled: bool  # 3.4.0 only; legacy has no `enabled`
     order: int  # 3.4.1+ rotation order; older firmware omits it
+
+
+class AvailableFont(TypedDict, total=False):
+    """One entry in settings.availableFonts on v4 firmware.
+
+    v3 firmware lists fonts as plain id strings; v4 wraps each in an object
+    so the WebUI can disable the ₿ price-marker when the active font lacks
+    the glyph. `select._font_options` accepts either shape.
+    """
+
+    id: str
+    hasBtcSymbol: bool
 
 
 class DndSettings(TypedDict, total=False):
@@ -138,15 +169,22 @@ class Settings(TypedDict, total=False):
     otaPassSet: bool  # 3.4.0 only
     otaEnabled: bool
     dataSource: int
-    nostrRelay: str
+    nostrRelay: str  # deprecated in v4 in favour of nostrRelays
+    nostrRelays: list[str]  # v4: up to 4 relay URLs
     nostrPubKey: str
-    nostrZapPubkey: str
+    nostrZapPubkey: str  # deprecated in v4 in favour of nostrZapPubkeys
+    nostrZapPubkeys: list[str]  # v4: up to 8 pubkeys
     nostrZapNotify: bool
     ledFlashOnZap: bool
     ledFlashOnUpd: bool
     ledBrightness: int
     disableLeds: bool
     stealFocus: bool
+    useSatsSymbol: bool  # v3 only; v4 replaces it with priceSymMode
+    priceSymMode: int  # v4: 0 none, 1 Satoshi symbol, 2 bitcoin sign ₿
+    fontName: str
+    availableFonts: list[str] | list[AvailableFont]  # v3: strings; v4: objects
+    availablePools: list[str]
     gitReleaseUrl: str
     tzString: str
     dnd: DndSettings

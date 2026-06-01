@@ -121,12 +121,15 @@ class BtclockCoordinator(DataUpdateCoordinator[Status]):
     def _merge_status(self, payload: Status) -> Status:
         """Carry forward fields that the device sometimes omits.
 
-        v4 firmware doesn't include `flStatus` in `/api/status` — it lives
-        only on `/api/frontlight/status`. Without this carry-forward, every
-        status update would wipe the bootstrapped/optimistic frontlight
-        state and the light entity would flip back to "off". v3.x firmware
-        always includes `flStatus`, so the merge is a no-op there.
+        v4 firmware doesn't include the flat `flStatus` array in `/api/status`
+        — it either nests the live frontlight state under
+        `frontlight: {on, duties, …}` (normalized below) or, when the board
+        has no frontlight, omits it entirely. In the latter case the
+        bootstrapped/optimistic value must survive subsequent frames or the
+        light entity would flip back to "off". v3.x firmware always includes
+        `flStatus`, so the merge is a no-op there.
         """
+        payload = _normalize_frontlight(payload)
         prev = self.data or {}
         if "flStatus" not in payload and prev.get("flStatus") is not None:
             merged: Status = {**payload, "flStatus": prev["flStatus"]}
@@ -215,3 +218,21 @@ class BtclockCoordinator(DataUpdateCoordinator[Status]):
             raise ConfigEntryAuthFailed(str(err)) from err
         except BtclockCommunicationError as err:
             raise UpdateFailed(str(err)) from err
+
+
+def _normalize_frontlight(status: Status) -> Status:
+    """Map v4's nested `frontlight.duties` onto the flat `flStatus` array.
+
+    v3.x firmware inlines `flStatus` (per-panel raw duty) in `/api/status`.
+    v4 firmware drops that flat field and nests the live frontlight state
+    under `frontlight: {on, duties, …}`. The frontlight light entity reads
+    `flStatus`, so translate the v4 shape to it here — at the single status
+    ingress both SSE and polling pass through — leaving v3.x payloads (which
+    already carry `flStatus`) untouched.
+    """
+    if "flStatus" in status:
+        return status
+    frontlight = status.get("frontlight")
+    if isinstance(frontlight, dict) and isinstance(frontlight.get("duties"), list):
+        return {**status, "flStatus": list(frontlight["duties"])}
+    return status

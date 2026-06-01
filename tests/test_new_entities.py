@@ -61,6 +61,22 @@ async def test_nostr_relay_sensor_exposes_url_and_connection(
     assert state.attributes.get("connected") is True
 
 
+async def test_nostr_relay_sensor_falls_back_to_relays_array(
+    hass: HomeAssistant, load_fixture
+) -> None:
+    """v4 deprecated the single `nostrRelay` string in favour of the
+    `nostrRelays` array — the sensor must surface the first configured relay
+    when the legacy field is gone."""
+    settings = load_fixture("settings_v3_4_revb").copy()
+    settings.pop("nostrRelay", None)
+    settings["nostrRelays"] = ["wss://relay.damus.io", "wss://relay.primal.net"]
+    await _setup(hass, settings, load_fixture("status_v3_4_revb"))
+
+    state = hass.states.get("sensor.btclock_9d5530_nostr_relay")
+    assert state is not None
+    assert state.state == "wss://relay.damus.io"
+
+
 async def test_ota_state_sensor_reports_idle_or_updating(
     hass: HomeAssistant, load_fixture
 ) -> None:

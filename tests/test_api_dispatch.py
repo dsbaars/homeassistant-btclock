@@ -18,6 +18,14 @@ def _expect(mock, method: str, url_re: str) -> None:
     mock.add(re.compile(url_re), method=method, status=200, payload={})
 
 
+def _recorded_kwargs(mock, method: str, path: str) -> dict:
+    """Return the kwargs of the last recorded request to method+path."""
+    for (recorded_method, url), calls in mock.requests.items():
+        if recorded_method == method and url.path == path:
+            return calls[-1].kwargs
+    raise AssertionError(f"no {method} {path} request was recorded")
+
+
 @pytest.fixture
 async def legacy_client(mock_aioresponse):
     session = aiohttp.ClientSession()
@@ -79,6 +87,42 @@ async def test_legacy_set_screen_path_param(mock_aioresponse, legacy_client) -> 
 async def test_v3_4_set_screen_query_param(mock_aioresponse, v3_4_client) -> None:
     _expect(mock_aioresponse, "POST", rf"^http://{HOST}/api/show/screen\?s=3")
     await v3_4_client.async_set_screen(3)
+
+
+async def test_v4_set_screen_uses_json_body(mock_aioresponse, v4_client) -> None:
+    """v4 sends the screen id as a JSON body, not a `?s=` query param.
+
+    The `$` anchor fails the match if a query string sneaks onto the URL.
+    """
+    _expect(mock_aioresponse, "POST", rf"^http://{HOST}/api/show/screen$")
+    await v4_client.async_set_screen(3)
+    kwargs = _recorded_kwargs(mock_aioresponse, "POST", "/api/show/screen")
+    assert kwargs.get("json") == {"s": 3}
+    assert kwargs.get("params") is None
+
+
+async def test_v4_set_currency_uses_json_body(mock_aioresponse, v4_client) -> None:
+    _expect(mock_aioresponse, "POST", rf"^http://{HOST}/api/show/currency$")
+    await v4_client.async_set_currency("EUR")
+    kwargs = _recorded_kwargs(mock_aioresponse, "POST", "/api/show/currency")
+    assert kwargs.get("json") == {"c": "EUR"}
+    assert kwargs.get("params") is None
+
+
+async def test_v3_4_set_currency_uses_query(mock_aioresponse, v3_4_client) -> None:
+    _expect(mock_aioresponse, "POST", rf"^http://{HOST}/api/show/currency\?c=EUR")
+    await v3_4_client.async_set_currency("EUR")
+    kwargs = _recorded_kwargs(mock_aioresponse, "POST", "/api/show/currency")
+    assert kwargs.get("params") == {"c": "EUR"}
+    assert kwargs.get("json") is None
+
+
+async def test_v4_show_text_uses_json_body(mock_aioresponse, v4_client) -> None:
+    _expect(mock_aioresponse, "POST", rf"^http://{HOST}/api/show/text$")
+    await v4_client.async_show_text("BTC")
+    kwargs = _recorded_kwargs(mock_aioresponse, "POST", "/api/show/text")
+    assert kwargs.get("json") == {"t": "BTC"}
+    assert kwargs.get("params") is None
 
 
 async def test_legacy_has_no_screen_next(mock_aioresponse, legacy_client) -> None:
@@ -149,6 +193,34 @@ async def test_v4_frontlight_set_uses_post(mock_aioresponse, v4_client) -> None:
 async def test_v3_4_frontlight_set_refused(mock_aioresponse, v3_4_client) -> None:
     with pytest.raises(BtclockError):
         await v3_4_client.async_set_frontlight_channels([0, 512, 1024, 2048])
+
+
+async def test_v4_frontlight_brightness_uses_json_body(
+    mock_aioresponse, v4_client
+) -> None:
+    """v4 dropped the legacy `?b=` query form for /api/frontlight/brightness;
+    the value must travel as a JSON body or the device 400s. The `$` anchor
+    fails the match if a query string sneaks onto the URL."""
+    _expect(mock_aioresponse, "POST", rf"^http://{HOST}/api/frontlight/brightness$")
+    await v4_client.async_frontlight_brightness(2048)
+    kwargs = _recorded_kwargs(mock_aioresponse, "POST", "/api/frontlight/brightness")
+    assert kwargs.get("json") == {"b": 2048}
+    assert kwargs.get("params") is None
+
+
+async def test_v3_4_frontlight_brightness_uses_query(
+    mock_aioresponse, v3_4_client
+) -> None:
+    """v3.4 firmware only reads the `?b=` query param — keep sending it."""
+    _expect(
+        mock_aioresponse,
+        "POST",
+        rf"^http://{HOST}/api/frontlight/brightness\?b=2048",
+    )
+    await v3_4_client.async_frontlight_brightness(2048)
+    kwargs = _recorded_kwargs(mock_aioresponse, "POST", "/api/frontlight/brightness")
+    assert kwargs.get("params") == {"b": 2048}
+    assert kwargs.get("json") is None
 
 
 # ---- new-API-only actions ----------------------------------------------------

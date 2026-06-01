@@ -117,10 +117,14 @@ class BtclockFrontlight(BtclockEntity, LightEntity):
         self._max_raw = int(coordinator.client.settings.get("flMaxBrightness") or 65535)
         self._on_state = False
         self._brightness_ha = 255
+        # Seed from whatever flStatus the coordinator already holds (the v4
+        # normalized status or the v3.4 inline array / bootstrap) so the entity
+        # reflects real device state on first load, not just after the next
+        # status frame arrives.
+        self._sync_from_status()
 
-    @callback
-    def _handle_coordinator_update(self) -> None:
-        # Infer on/off from flStatus (list of raw levels, one per display).
+    def _sync_from_status(self) -> None:
+        # Infer on/off + brightness from flStatus (raw levels, one per display).
         fl_status = self.coordinator.data.get("flStatus") or []
         if fl_status:
             raw = max(fl_status)
@@ -128,6 +132,10 @@ class BtclockFrontlight(BtclockEntity, LightEntity):
             self._brightness_ha = min(
                 255, int(round(raw / max(self._max_raw, 1) * 255))
             )
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        self._sync_from_status()
         super()._handle_coordinator_update()
 
     @property

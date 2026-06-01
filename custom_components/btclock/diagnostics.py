@@ -15,14 +15,18 @@ _REDACT_SETTINGS = {
     "hostname",
     "hostnamePrefix",
     "ip",
+    "wifiMac",  # v4
     "httpAuthUser",
     "httpAuthPass",
     "nostrPubKey",
     "nostrZapPubkey",
+    "nostrZapPubkeys",  # v4 array form
     "bitaxeHostname",
     "miningPoolUser",
     "ceEndpoint",
     "customEndpoint",
+    "nwcUri",  # v4 Nostr Wallet Connect secret
+    "nwcUriMasked",  # v4
 }
 
 

@@ -1,6 +1,8 @@
-"""Select entities: screen + currency."""
+"""Select entities: screen, currency, mining pool, font, price symbol."""
 
 from __future__ import annotations
+
+from typing import Any
 
 from homeassistant.components.select import SelectEntity
 from homeassistant.core import HomeAssistant
@@ -11,6 +13,15 @@ from .coordinator import BtclockCoordinator
 from .entity import BtclockEntity
 from .models import MODERN_VARIANTS, ApiVariant
 
+# settings.priceSymMode (v4) — the BTC price-row marker. Replaces the legacy
+# boolean `useSatsSymbol`/`useBtcSymbol` v3 toggles with a single tri-state.
+_PRICE_SYMBOL_OPTIONS: dict[str, int] = {
+    "No symbol": 0,
+    "Satoshi symbol": 1,
+    "Bitcoin sign (₿)": 2,
+}
+_PRICE_SYMBOL_LABELS: dict[int, str] = {v: k for k, v in _PRICE_SYMBOL_OPTIONS.items()}
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -18,26 +29,44 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     coordinator = entry.runtime_data
+    settings = coordinator.client.settings
     entities: list[SelectEntity] = [BtclockScreenSelect(coordinator)]
-    if (
-        coordinator.client.variant in MODERN_VARIANTS
-        and coordinator.client.settings.get("actCurrencies")
-    ):
+    if coordinator.client.variant in MODERN_VARIANTS and settings.get("actCurrencies"):
         entities.append(BtclockCurrencySelect(coordinator))
     # v4 ships real catalogues for `availablePools` / `availableFonts`;
     # v3.4 emits a placeholder `[""]` so we filter to "more than the empty
     # placeholder" rather than gating strictly on variant.
     if coordinator.client.variant is ApiVariant.V4:
-        if _has_real_catalog(coordinator.client.settings.get("availablePools")):
+        if _has_real_catalog(settings.get("availablePools")):
             entities.append(BtclockMiningPoolSelect(coordinator))
-        if _has_real_catalog(coordinator.client.settings.get("availableFonts")):
+        # `availableFonts` is a string list on v3 but a list of
+        # `{id, hasBtcSymbol}` objects on v4 — gate on the normalized ids.
+        if _font_options(settings.get("availableFonts")):
             entities.append(BtclockFontSelect(coordinator))
+        if "priceSymMode" in settings:
+            entities.append(BtclockPriceSymbolSelect(coordinator))
     async_add_entities(entities)
 
 
 def _has_real_catalog(catalog: list[str] | None) -> bool:
     """Return True when the catalogue lists at least one non-empty option."""
     return bool(catalog) and any(item for item in catalog if item)
+
+
+def _font_options(catalog: Any) -> list[str]:
+    """Normalize `availableFonts` to a list of font-id strings.
+
+    v3 firmware returns a plain `["antonio", ...]` string list. v4 firmware
+    returns objects — `[{"id": "antonio", "hasBtcSymbol": true}, ...]` — so the
+    raw list can't be handed to a select dropdown directly. Accept either shape
+    and emit the id strings, dropping blank/placeholder entries.
+    """
+    options: list[str] = []
+    for item in catalog or []:
+        font_id = item.get("id") if isinstance(item, dict) else item
+        if isinstance(font_id, str) and font_id:
+            options.append(font_id)
+    return options
 
 
 class BtclockScreenSelect(BtclockEntity, SelectEntity):
@@ -152,11 +181,7 @@ class BtclockFontSelect(BtclockEntity, SelectEntity):
 
     @property
     def options(self) -> list[str]:
-        return [
-            f
-            for f in (self.coordinator.client.settings.get("availableFonts") or [])
-            if f
-        ]
+        return _font_options(self.coordinator.client.settings.get("availableFonts"))
 
     @property
     def current_option(self) -> str | None:
@@ -164,3 +189,34 @@ class BtclockFontSelect(BtclockEntity, SelectEntity):
 
     async def async_select_option(self, option: str) -> None:
         await self.coordinator.async_patch_settings({"fontName": option})
+
+
+class BtclockPriceSymbolSelect(BtclockEntity, SelectEntity):
+    """Pick the BTC price-row marker (v4 `priceSymMode`).
+
+    Replaces the v3-only `useSatsSymbol` boolean switch: v4 collapsed the
+    sats/₿ toggles into one tri-state integer setting (0 none, 1 Satoshi
+    symbol, 2 bitcoin sign ₿).
+    """
+
+    _attr_translation_key = "price_symbol"
+    _attr_icon = "mdi:bitcoin"
+
+    def __init__(self, coordinator: BtclockCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.config_entry.entry_id}_price_symbol"
+
+    @property
+    def options(self) -> list[str]:
+        return list(_PRICE_SYMBOL_OPTIONS)
+
+    @property
+    def current_option(self) -> str | None:
+        return _PRICE_SYMBOL_LABELS.get(
+            self.coordinator.client.settings.get("priceSymMode")
+        )
+
+    async def async_select_option(self, option: str) -> None:
+        await self.coordinator.async_patch_settings(
+            {"priceSymMode": _PRICE_SYMBOL_OPTIONS[option]}
+        )

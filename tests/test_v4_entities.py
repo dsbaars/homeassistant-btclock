@@ -82,8 +82,30 @@ async def test_mining_pool_select_appears_on_v4_with_real_catalog(
 async def test_font_select_appears_on_v4_with_real_catalog(
     hass: HomeAssistant, mock_aioresponse, load_fixture
 ) -> None:
+    """v4 `availableFonts` is a list of `{id, hasBtcSymbol}` objects — the
+    dropdown must surface the id strings, not the raw dicts."""
+    await _setup(
+        hass,
+        mock_aioresponse,
+        load_fixture("settings_v4_revb"),
+        load_fixture("status_v4_revb"),
+        variant=ApiVariant.V4,
+    )
+    state = hass.states.get("select.btclock_v4abcd_display_font")
+    assert state is not None
+    assert state.state == "antonio"
+    # The bug this guards against: object-shaped fonts leaking into options.
+    assert state.attributes["options"] == ["antonio", "oswald"]
+
+
+async def test_font_select_accepts_v3_string_catalog(
+    hass: HomeAssistant, mock_aioresponse, load_fixture
+) -> None:
+    """A v3-style plain string `availableFonts` list must still work if a
+    v4 build ever emits the legacy shape (forward/backward compatibility)."""
     settings = load_fixture("settings_v4_revb").copy()
-    settings["fontName"] = "antonio"
+    settings["availableFonts"] = ["antonio", "oswald"]
+    settings["fontName"] = "oswald"
     await _setup(
         hass,
         mock_aioresponse,
@@ -93,13 +115,63 @@ async def test_font_select_appears_on_v4_with_real_catalog(
     )
     state = hass.states.get("select.btclock_v4abcd_display_font")
     assert state is not None
-    assert state.state == "antonio"
+    assert state.state == "oswald"
+    assert state.attributes["options"] == ["antonio", "oswald"]
+
+
+async def test_price_symbol_select_appears_on_v4(
+    hass: HomeAssistant, mock_aioresponse, load_fixture
+) -> None:
+    """`priceSymMode` (v4) is surfaced as a tri-state select; the fixture
+    value 1 maps to the Satoshi-symbol option."""
+    await _setup(
+        hass,
+        mock_aioresponse,
+        load_fixture("settings_v4_revb"),
+        load_fixture("status_v4_revb"),
+        variant=ApiVariant.V4,
+    )
+    state = hass.states.get("select.btclock_v4abcd_price_symbol")
+    assert state is not None
+    assert state.state == "Satoshi symbol"
+    assert state.attributes["options"] == [
+        "No symbol",
+        "Satoshi symbol",
+        "Bitcoin sign (₿)",
+    ]
+
+
+async def test_price_symbol_select_patches_integer(
+    hass: HomeAssistant, mock_aioresponse, load_fixture
+) -> None:
+    """Selecting an option must PATCH the firmware integer, not the label."""
+    await _setup(
+        hass,
+        mock_aioresponse,
+        load_fixture("settings_v4_revb"),
+        load_fixture("status_v4_revb"),
+        variant=ApiVariant.V4,
+    )
+    with patch.object(
+        BtclockClient, "async_patch_settings", new=AsyncMock()
+    ) as mock_patch:
+        await hass.services.async_call(
+            "select",
+            "select_option",
+            {
+                "entity_id": "select.btclock_v4abcd_price_symbol",
+                "option": "Bitcoin sign (₿)",
+            },
+            blocking=True,
+        )
+    mock_patch.assert_awaited_once_with({"priceSymMode": 2})
 
 
 async def test_mining_pool_and_font_selects_absent_on_v3_4(
     hass: HomeAssistant, mock_aioresponse, load_fixture
 ) -> None:
-    """v3.4 fixture's `availablePools` is `[""]` (placeholder) — no select."""
+    """v3.4 fixture's `availablePools` is `[""]` (placeholder) — no select.
+    The font and price-symbol selects are v4-only and must stay absent."""
     await _setup(
         hass,
         mock_aioresponse,
@@ -109,6 +181,30 @@ async def test_mining_pool_and_font_selects_absent_on_v3_4(
     )
     assert hass.states.get("select.btclock_9d5530_mining_pool") is None
     assert hass.states.get("select.btclock_9d5530_display_font") is None
+    assert hass.states.get("select.btclock_9d5530_price_symbol") is None
+
+
+# ---- frontlight -----------------------------------------------------------
+
+
+async def test_v4_frontlight_reflects_nested_status(
+    hass: HomeAssistant, mock_aioresponse, load_fixture
+) -> None:
+    """v4 nests live frontlight duties under `status.frontlight` — the light
+    entity must read brightness from that (normalized to flStatus) rather
+    than flipping to "off"."""
+    await _setup(
+        hass,
+        mock_aioresponse,
+        load_fixture("settings_v4_revb"),
+        load_fixture("status_v4_revb"),
+        variant=ApiVariant.V4,
+    )
+    state = hass.states.get("light.btclock_v4abcd_frontlight")
+    assert state is not None
+    assert state.state == "on"
+    # duties 2048 of flMaxBrightness 2048 → full brightness.
+    assert state.attributes["brightness"] == 255
 
 
 # ---- buttons --------------------------------------------------------------

@@ -31,5 +31,11 @@
     "endTime": "7:00",
     "active": false
   },
+  "frontlight": {
+    "on": true,
+    "duties": [2048, 2048, 2048, 2048, 2048, 2048, 2048],
+    "targetDuty": 2048,
+    "configuredBrightness": 2048
+  },
   "lightLevel": 150
 }

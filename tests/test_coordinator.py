@@ -97,12 +97,31 @@ async def test_polling_mode_uses_status_endpoint(
     client.async_update_status.assert_awaited_once()
 
 
-async def test_status_merge_preserves_flStatus_on_v4(
+async def test_status_merge_derives_flStatus_from_v4_frontlight(
     hass: HomeAssistant, config_entry: MockConfigEntry, load_fixture
 ) -> None:
-    """v4 firmware omits flStatus from /api/status; the previously cached
-    value must survive subsequent updates so the frontlight light entity
-    doesn't flicker back to "off" on every status frame."""
+    """v4 firmware nests live frontlight state under `frontlight.duties`
+    instead of the flat `flStatus` array — the merge must translate it so
+    the frontlight light entity reflects real device state."""
+    client = _make_mock_client(load_fixture("settings_v4_revb"))
+    coord = BtclockCoordinator(hass, config_entry, client)
+
+    v4_status = load_fixture("status_v4_revb")
+    assert "flStatus" not in v4_status  # v4 doesn't emit the flat field
+    assert v4_status["frontlight"]["duties"] == [2048] * 7
+    await coord._on_status_frame(v4_status)  # noqa: SLF001
+
+    assert coord.data["flStatus"] == [2048] * 7
+    assert coord.data["currentScreen"] == 0  # rest of the new frame applied
+
+
+async def test_status_merge_carries_flStatus_when_absent(
+    hass: HomeAssistant, config_entry: MockConfigEntry, load_fixture
+) -> None:
+    """When a v4 frame carries neither `flStatus` nor a `frontlight` block
+    (e.g. a board without frontlight hardware, or a partial frame), the
+    previously cached value must survive so the light entity doesn't flicker
+    back to "off" on every status frame."""
     client = _make_mock_client(load_fixture("settings_v4_revb"))
     coord = BtclockCoordinator(hass, config_entry, client)
 
@@ -110,8 +129,8 @@ async def test_status_merge_preserves_flStatus_on_v4(
     coord.async_set_updated_data({"flStatus": [1024, 1024, 1024, 1024]})
     assert coord.data["flStatus"] == [1024, 1024, 1024, 1024]
 
-    # New v4 status frame omits flStatus → the merge must carry it forward.
     v4_status = load_fixture("status_v4_revb")
+    v4_status.pop("frontlight")
     assert "flStatus" not in v4_status
     await coord._on_status_frame(v4_status)  # noqa: SLF001
 
