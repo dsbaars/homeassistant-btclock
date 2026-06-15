@@ -1,6 +1,6 @@
 -r requirements.txt
-pytest-homeassistant-custom-component==0.13.333
+pytest-homeassistant-custom-component==0.13.339
 aioresponses==0.7.8
-# Pinned by pytest-homeassistant-custom-component==0.13.333 (requires syrupy==5.1.0);
+# Pinned by pytest-homeassistant-custom-component==0.13.339 (requires syrupy==5.1.0);
 # can't bump independently until that package relaxes the pin.
 syrupy==5.1.0
