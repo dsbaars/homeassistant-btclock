@@ -138,7 +138,7 @@
       "bitaxe_enabled":     { "name": "Bitaxe data source" },
       "mining_pool_stats":  { "name": "Mining pool stats" },
       "pool_global_stats":  { "name": "Show pool-wide stats" },
-      "mow_mode":           { "name": "MoW mode" },
+      "mow_mode":           { "name": "Mow suffix mode" },
       "use_sats_symbol":    { "name": "Use sats symbol" },
       "use_block_countdown": { "name": "Show block countdown" },
       "hide_lead_zero":     { "name": "Hide leading zero on hours" },

@@ -27,7 +27,7 @@ v4-only entities are marked **v4**.
 |-----------------|---------------------------------------------------------------------------|
 | `sensor`        | Current screen, currency, uptime, RSSI, free heap, ambient light level    |
 | `binary_sensor` | Price / blocks / V2 / nostr feed connectivity, screen timer, OTA, DND     |
-| `switch`        | Screen timer, Do-not-disturb, scheduled Do-not-disturb (3.4.0+); **v4**: Bitaxe data source, mining-pool stats, pool-wide stats, MoW mode, sats symbol, block countdown, hide leading zero, inverted colors |
+| `switch`        | Screen timer, Do-not-disturb, scheduled Do-not-disturb (3.4.0+); **v4**: Bitaxe data source, mining-pool stats, pool-wide stats, Mow suffix mode (e.g. 1.00M), sats symbol, block countdown, hide leading zero, inverted colors |
 | `select`        | Screen (rotation-ordered on 3.4.1+), currency (3.4.0+); **v4**: mining pool, display font |
 | `time`          | Do-not-disturb schedule start / end (3.4.0+)                              |
 | `light`         | One entity per status LED, plus frontlight (when hardware present)        |
