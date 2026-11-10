@@ -16,7 +16,7 @@ from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv, device_registry as dr
 
-from .const import DOMAIN
+from .const import DOMAIN, FRONTLIGHT_MAX_DUTY_V4
 from .coordinator import BtclockCoordinator
 from .models import ApiVariant, MODERN_VARIANTS
 
@@ -92,7 +92,7 @@ _SET_FRONTLIGHT_CHANNELS_SCHEMA = vol.Schema(
         vol.Required(ATTR_DEVICE_ID): cv.string,
         vol.Required(ATTR_DUTIES): vol.All(
             cv.ensure_list,
-            [vol.All(vol.Coerce(int), vol.Range(min=0, max=4095))],
+            [vol.All(vol.Coerce(int), vol.Range(min=0, max=FRONTLIGHT_MAX_DUTY_V4))],
             vol.Length(max=_WIDGET_MAX_LEN),
         ),
     }

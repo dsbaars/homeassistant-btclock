@@ -49,6 +49,7 @@ from .const import (
     UPDATE_MODE_EVENTS,
     UPDATE_MODE_POLLING,
 )
+from .host_utils import is_auto_managed_host, is_mdns_host, usable_ipv4
 
 _UPDATE_MODE_OPTIONS = [
     SelectOptionDict(value=UPDATE_MODE_EVENTS, label="Server-Sent Events (push)"),
@@ -115,6 +116,7 @@ class BtclockConfigFlow(ConfigFlow, domain=DOMAIN):
         self._username: str | None = None
         self._password: str | None = None
         self._hostname: str | None = None  # from /api/settings
+        self._device_ip: str | None = None  # from /api/settings `ip`
 
     @staticmethod
     @callback
@@ -150,11 +152,16 @@ class BtclockConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         hostname = discovery_info.hostname.rstrip(".")
         short = hostname.removesuffix(".local")
-        self._host = hostname
+        # Store the advertised IPv4 address, not the .local name: every
+        # later connect would otherwise depend on an mDNS lookup.
+        ip = next((a for a in map(usable_ipv4, discovery_info.ip_addresses) if a), None)
+        self._host = ip or hostname
         self._hostname = short
 
         await self.async_set_unique_id(short)
-        self._abort_if_unique_id_configured(updates={CONF_HOST: hostname})
+        # A rediscovered, already-configured device: follow its (possibly
+        # new) IP, unless the user pinned the entry to their own DNS name.
+        self._abort_if_unique_id_configured(updates=self._discovered_ip_updates(ip))
         self.context["title_placeholders"] = {"name": short}
         return await self.async_step_zeroconf_confirm()
 
@@ -189,6 +196,10 @@ class BtclockConfigFlow(ConfigFlow, domain=DOMAIN):
                 errors["base"] = "cannot_connect"
             elif result == "unknown":
                 errors["base"] = "unknown"
+            elif self.source == SOURCE_RECONFIGURE:
+                # Reconfigure onto a device that needs auth: update the
+                # existing entry instead of creating a second one.
+                return await self._finish_reconfigure()
             else:
                 return await self.async_step_update_mode()
 
@@ -269,14 +280,7 @@ class BtclockConfigFlow(ConfigFlow, domain=DOMAIN):
             if result in ("connection", "unknown"):
                 errors["base"] = "cannot_connect"
             else:
-                await self.async_set_unique_id(
-                    self._hostname or entry.unique_id, raise_on_progress=False
-                )
-                self._abort_if_unique_id_mismatch(reason="another_device")
-                return self.async_update_reload_and_abort(
-                    entry,
-                    data_updates={CONF_HOST: self._host},
-                )
+                return await self._finish_reconfigure()
 
         return self.async_show_form(
             step_id="reconfigure",
@@ -284,7 +288,42 @@ class BtclockConfigFlow(ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
+    async def _finish_reconfigure(self) -> ConfigFlowResult:
+        entry = self._get_reconfigure_entry()
+        await self.async_set_unique_id(
+            self._hostname or entry.unique_id, raise_on_progress=False
+        )
+        self._abort_if_unique_id_mismatch(reason="another_device")
+        data_updates: dict[str, Any] = {CONF_HOST: self._host_to_store()}
+        if self._username is not None:
+            data_updates[CONF_USERNAME] = self._username
+            data_updates[CONF_PASSWORD] = self._password
+        return self.async_update_reload_and_abort(entry, data_updates=data_updates)
+
     # ---- internals ---------------------------------------------------------
+
+    def _host_to_store(self) -> str:
+        """Return the address to persist: the device's IP instead of a .local name.
+
+        A `.local` name only resolves while mDNS works, so once the probe has
+        reached the device we keep the IP it reports in `/api/settings`.
+        IPs and regular DNS names are stored exactly as entered.
+        """
+        assert self._host is not None
+        if is_mdns_host(self._host) and self._device_ip:
+            return self._device_ip
+        return self._host
+
+    def _discovered_ip_updates(self, ip: str | None) -> dict[str, Any] | None:
+        """Entry-data updates for a rediscovered, already-configured device."""
+        if ip is None or self.unique_id is None:
+            return None
+        entry = self.hass.config_entries.async_entry_for_domain_unique_id(
+            DOMAIN, self.unique_id
+        )
+        if entry is not None and not is_auto_managed_host(entry.data.get(CONF_HOST)):
+            return None
+        return {CONF_HOST: ip}
 
     async def _probe(self) -> str:
         """Try to load settings; return a short status string."""
@@ -306,17 +345,19 @@ class BtclockConfigFlow(ConfigFlow, domain=DOMAIN):
             LOGGER.exception("Unexpected BTClock probe error: %s", err)
             return "unknown"
         self._hostname = settings.get("hostname") or self._hostname
+        self._device_ip = usable_ipv4(settings.get("ip"))
         return "ok"
 
     async def _finish_create(self, options_input: dict[str, Any]) -> ConfigFlowResult:
         """Shared happy-path: set unique_id + create the entry with options."""
         assert self._host is not None
         unique_id = self._hostname or self._host
+        host = self._host_to_store()
         if self.source not in (SOURCE_REAUTH, SOURCE_RECONFIGURE):
             await self.async_set_unique_id(unique_id, raise_on_progress=False)
-            self._abort_if_unique_id_configured(updates={CONF_HOST: self._host})
+            self._abort_if_unique_id_configured(updates={CONF_HOST: host})
 
-        data: dict[str, Any] = {CONF_HOST: self._host}
+        data: dict[str, Any] = {CONF_HOST: host}
         if self._username is not None:
             data[CONF_USERNAME] = self._username
             data[CONF_PASSWORD] = self._password

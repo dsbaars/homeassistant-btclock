@@ -1,8 +1,14 @@
 """Tiny Server-Sent-Events client for the BTClock `/events` stream.
 
 BTClock emits two event types:
-  - `welcome` — sent once on connect, payload is a millis() uptime value.
-  - `status`  — periodic (~5 s) JSON matching GET /api/status.
+  - `welcome` — sent once on connect; `{}` on v4 (older firmware sent the
+    client IP or a millis() value). Ignored.
+  - `status`  — JSON matching GET /api/status; v4 pushes one on every state
+    change (block, screen rotation, LEDs, DND, …), v3 also periodically.
+
+v4 documents a third, legacy frame — `data: closing` on the default
+`message` event — as a graceful-shutdown hint. It is ignored here; the
+reconnect loop below handles the subsequent disconnect.
 
 The SSE frame format we need to handle:
 
@@ -132,8 +138,7 @@ class BtclockEventStream:
         async with self._client.session.request(
             "GET",
             url,
-            auth=self._client.auth,
-            headers={"Accept": "text/event-stream"},
+            headers={"Accept": "text/event-stream", **self._client.auth_headers},
             timeout=aiohttp.ClientTimeout(total=None, sock_read=None),
         ) as resp:
             if resp.status in (401, 403):

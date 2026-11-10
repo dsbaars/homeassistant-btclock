@@ -17,10 +17,10 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import BtclockConfigEntry
 from .api import BtclockAuthError, BtclockCommunicationError
-from .const import LOGGER
+from .const import FRONTLIGHT_MAX_DUTY_V4, LOGGER
 from .coordinator import BtclockCoordinator
 from .entity import BtclockEntity
-from .models import MODERN_VARIANTS, LedDict
+from .models import MODERN_VARIANTS, ApiVariant, LedDict
 
 _OFF_HEX = "#000000"
 
@@ -114,7 +114,14 @@ class BtclockFrontlight(BtclockEntity, LightEntity):
     def __init__(self, coordinator: BtclockCoordinator) -> None:
         super().__init__(coordinator)
         self._attr_unique_id = f"{coordinator.config_entry.entry_id}_frontlight"
-        self._max_raw = int(coordinator.client.settings.get("flMaxBrightness") or 65535)
+        configured = int(coordinator.client.settings.get("flMaxBrightness") or 0)
+        if coordinator.client.variant is ApiVariant.V4:
+            # v4 rejects any duty above its hardware ceiling with a 400.
+            self._max_raw = min(
+                configured or FRONTLIGHT_MAX_DUTY_V4, FRONTLIGHT_MAX_DUTY_V4
+            )
+        else:
+            self._max_raw = configured or 65535
         self._on_state = False
         self._brightness_ha = 255
         # Seed from whatever flStatus the coordinator already holds (the v4

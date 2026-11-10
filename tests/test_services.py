@@ -12,7 +12,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.service import _SERVICES_SCHEMA
 from homeassistant.util.yaml import load_yaml_dict
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.btclock.api import BtclockClient
 from custom_components.btclock.const import DOMAIN
@@ -88,7 +88,9 @@ async def _setup(
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
 
-    device = dr.async_get(hass).async_get_device(identifiers={(DOMAIN, entry.entry_id)})
+    device = dr.async_get(hass).async_get_device_by_identifier(
+        (DOMAIN, entry.entry_id), entry.entry_id
+    )
     assert device is not None
     return device.id
 
@@ -325,7 +327,7 @@ async def test_set_frontlight_channels_calls_api(
         variant=ApiVariant.V4,
         mock_aioresponse=mock_aioresponse,
     )
-    duties = [0, 512, 1024, 2048, 4095, 2048, 1024]
+    duties = [0, 512, 1024, 2048, 1024, 512, 0]
     with patch.object(
         BtclockClient, "async_set_frontlight_channels", new=AsyncMock()
     ) as mock_call:
@@ -375,7 +377,27 @@ async def test_set_frontlight_channels_rejects_no_frontlight(
             SERVICE_SET_FRONTLIGHT_CHANNELS,
             {
                 "device_id": device_id,
-                "duties": [0, 512, 1024, 2048, 4095, 2048, 1024],
+                "duties": [0, 512, 1024, 2048, 1024, 512, 0],
             },
+            blocking=True,
+        )
+
+
+async def test_set_frontlight_channels_rejects_duty_above_v4_ceiling(
+    hass: HomeAssistant, load_fixture, mock_aioresponse
+) -> None:
+    """v4 caps frontlight duties at 2048; the service schema must too."""
+    device_id = await _setup(
+        hass,
+        load_fixture("settings_v4_revb"),
+        load_fixture("status_v4_revb"),
+        variant=ApiVariant.V4,
+        mock_aioresponse=mock_aioresponse,
+    )
+    with pytest.raises(vol.Invalid):
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_SET_FRONTLIGHT_CHANNELS,
+            {"device_id": device_id, "duties": [0, 0, 0, 2049, 0, 0, 0]},
             blocking=True,
         )

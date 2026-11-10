@@ -1,6 +1,9 @@
 -r requirements.txt
-pytest-homeassistant-custom-component==0.13.333
+# Home Assistant's own test harness (replaces the now-unmaintained
+# pytest-homeassistant-custom-component). Its version must match the
+# homeassistant pin in requirements.txt — upgrade them together.
+pytest-homeassistant==2026.11.1
 aioresponses==0.7.9
-# Pinned by pytest-homeassistant-custom-component==0.13.333 (requires syrupy==5.1.0);
+# Pinned by pytest-homeassistant==2026.11.1 (requires syrupy==6.1.1);
 # can't bump independently until that package relaxes the pin.
-syrupy==5.1.0
+syrupy==6.1.1

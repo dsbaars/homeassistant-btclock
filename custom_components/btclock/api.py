@@ -9,6 +9,7 @@ is known to have rebooted (e.g. after a reconnect).
 from __future__ import annotations
 
 import asyncio
+import base64
 import socket
 from typing import Any
 
@@ -36,7 +37,76 @@ class BtclockCommunicationError(BtclockError):
 
 
 class BtclockAuthError(BtclockError):
-    """Raised on 401/403 — triggers the HA reauth flow."""
+    """Raised on 401 (or a bare 403) — triggers the HA reauth flow."""
+
+
+class BtclockRequestError(BtclockCommunicationError):
+    """The device answered, but rejected the request (4xx/5xx).
+
+    Subclasses `BtclockCommunicationError` so every existing catch site
+    (optimistic-update revert, polling `UpdateFailed`) keeps handling it;
+    the message carries the firmware's `error`/`msg` detail when present
+    (e.g. `fontName:unknown`, `ota_disabled`, `sha256 mismatch`).
+    """
+
+    def __init__(self, message: str, *, status: int, detail: str | None) -> None:
+        super().__init__(message)
+        self.status = status
+        self.detail = detail
+
+
+def _basic_auth_header(username: str, password: str | None) -> dict[str, str]:
+    """Build a Basic `Authorization` header.
+
+    Replaces `aiohttp.BasicAuth`, deprecated in aiohttp 3.14 (removed in
+    4.0). Encoded by hand rather than via `aiohttp.encode_basic_auth` so it
+    also works on the older aiohttp shipped with the minimum supported HA.
+    latin-1 matches what `aiohttp.BasicAuth` used to send.
+    """
+    token = base64.b64encode(f"{username}:{password or ''}".encode("latin1"))
+    return {"Authorization": f"Basic {token.decode('ascii')}"}
+
+
+async def _error_detail(resp: aiohttp.ClientResponse) -> tuple[str | None, bool]:
+    """Pull a human-readable reason out of an error response body.
+
+    Returns `(detail, from_json)`. v4 firmware answers JSON
+    `{"error": "..."}` (or `{"msg": "..."}`) on most rejections;
+    `httpd_resp_send_err` paths send a short plain-text reason instead.
+    """
+    try:
+        if "application/json" in resp.headers.get("Content-Type", ""):
+            body = await resp.json()
+            if isinstance(body, dict):
+                detail = body.get("error") or body.get("msg")
+                if detail:
+                    return str(detail), True
+            return None, False
+        text = (await resp.text()).strip()
+    except (aiohttp.ClientError, ValueError, UnicodeDecodeError):
+        return None, False
+    return text[:200] or None, False
+
+
+async def _raise_for_status(resp: aiohttp.ClientResponse, url: str) -> None:
+    """Map an HTTP error status onto the integration's exception types.
+
+    401 is always an auth failure. v4 also answers 403 for non-auth
+    reasons (`ota_disabled`, `cross_origin`) with a JSON `error` body, so a
+    403 only counts as auth when it carries no such detail (older firmware).
+    """
+    if resp.status < 400:
+        return
+    if resp.status == 401:
+        raise BtclockAuthError(f"Authentication required for {url}")
+    detail, from_json = await _error_detail(resp)
+    if resp.status == 403 and not from_json:
+        raise BtclockAuthError(f"Authentication required for {url}")
+    raise BtclockRequestError(
+        f"{url} returned HTTP {resp.status}: {detail or resp.reason}",
+        status=resp.status,
+        detail=detail,
+    )
 
 
 class BtclockClient:
@@ -52,8 +122,8 @@ class BtclockClient:
     ) -> None:
         self._host = host
         self._session = session
-        self._auth = (
-            aiohttp.BasicAuth(username, password) if username is not None else None
+        self._auth_headers: dict[str, str] = (
+            _basic_auth_header(username, password) if username is not None else {}
         )
         self._variant: ApiVariant | None = None
         self._settings: Settings | None = None
@@ -64,6 +134,10 @@ class BtclockClient:
     @property
     def host(self) -> str:
         return self._host
+
+    def set_host(self, host: str) -> None:
+        """Point the client at a new address (e.g. the IP behind a .local name)."""
+        self._host = host
 
     @property
     def variant(self) -> ApiVariant:
@@ -83,20 +157,21 @@ class BtclockClient:
 
     @property
     def has_auth(self) -> bool:
-        return self._auth is not None
+        return bool(self._auth_headers)
 
     @property
     def session(self) -> aiohttp.ClientSession:
         return self._session
 
     @property
-    def auth(self) -> aiohttp.BasicAuth | None:
-        return self._auth
+    def auth_headers(self) -> dict[str, str]:
+        """`Authorization` header for requests made outside this client (SSE)."""
+        return dict(self._auth_headers)
 
     def set_credentials(self, username: str | None, password: str | None) -> None:
         """Replace the stored credentials (used on reauth)."""
-        self._auth = (
-            aiohttp.BasicAuth(username, password) if username is not None else None
+        self._auth_headers = (
+            _basic_auth_header(username, password) if username is not None else {}
         )
 
     # ---- Variant detection ------------------------------------------------------
@@ -250,12 +325,20 @@ class BtclockClient:
         """
         await self._request_key("auto_update", expect_json=False)
 
-    async def async_upload_firmware(self, data: bytes, filename: str) -> None:
-        """Multipart upload of the firmware partition image."""
-        await self._upload_key("upload_firmware", data, filename, field="firmware")
+    async def async_upload_firmware(
+        self, data: bytes, filename: str, *, sha256: str | None = None
+    ) -> None:
+        """Upload the firmware app image.
+
+        `sha256` (64 hex chars) is forwarded on v4 so the device rejects a
+        corrupted download instead of flashing it; older firmware ignores it.
+        """
+        await self._upload_key(
+            "upload_firmware", data, filename, field="firmware", sha256=sha256
+        )
 
     async def async_upload_webui(self, data: bytes, filename: str) -> None:
-        """Multipart upload of the LittleFS webUI image."""
+        """Upload the LittleFS (WebUI) filesystem image."""
         await self._upload_key("upload_webui", data, filename, field="webui")
 
     # ---- v4-only actions --------------------------------------------------------
@@ -338,9 +421,21 @@ class BtclockClient:
         )
 
     async def _upload_key(
-        self, key: str, data: bytes, filename: str, *, field: str
+        self,
+        key: str,
+        data: bytes,
+        filename: str,
+        *,
+        field: str,
+        sha256: str | None = None,
     ) -> None:
-        """POST a binary blob to an /upload endpoint as multipart form-data.
+        """POST a binary image to an /upload endpoint.
+
+        v4 firmware streams the raw request body straight into the target
+        partition (Content-Length required, optional `?sha256=`); a multipart
+        envelope would be written to flash verbatim and fail validation.
+        v3.x firmware (ESPAsyncWebServer `onUpload`) expects multipart
+        form-data instead.
 
         Generous 120s timeout — the device erases + writes the flash partition
         inline during the upload, which can take a while on larger images.
@@ -348,18 +443,25 @@ class BtclockClient:
         variant = self._variant or ApiVariant.V3_4
         method, template = PATHS[variant][key]
         url = f"http://{self._host}{template}"
-        form = aiohttp.FormData()
-        form.add_field(
-            field, data, filename=filename, content_type="application/octet-stream"
-        )
+        params: dict[str, str] | None = None
+        headers = dict(self._auth_headers)
+        payload: bytes | aiohttp.FormData
+        if variant is ApiVariant.V4:
+            payload = data
+            headers["Content-Type"] = "application/octet-stream"
+            if sha256:
+                params = {"sha256": sha256}
+        else:
+            payload = aiohttp.FormData()
+            payload.add_field(
+                field, data, filename=filename, content_type="application/octet-stream"
+            )
         try:
             async with asyncio.timeout(120):
                 resp = await self._session.request(
-                    method, url, data=form, auth=self._auth
+                    method, url, data=payload, params=params, headers=headers
                 )
-                if resp.status in (401, 403):
-                    raise BtclockAuthError(f"Authentication required for {url}")
-                resp.raise_for_status()
+                await _raise_for_status(resp, url)
         except TimeoutError as err:
             raise BtclockCommunicationError(f"Timeout uploading to {url}") from err
         except (aiohttp.ClientError, socket.gaierror) as err:
@@ -381,11 +483,9 @@ class BtclockClient:
                     url,
                     params=params,
                     json=json_body,
-                    auth=self._auth,
+                    headers=self._auth_headers or None,
                 )
-                if resp.status in (401, 403):
-                    raise BtclockAuthError(f"Authentication required for {url}")
-                resp.raise_for_status()
+                await _raise_for_status(resp, url)
                 if not expect_json:
                     return None
                 ctype = resp.headers.get("Content-Type", "")

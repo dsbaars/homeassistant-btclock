@@ -8,13 +8,17 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from homeassistant.exceptions import HomeAssistantError
+from pytest_homeassistant.common import MockConfigEntry
 
-from custom_components.btclock.api import BtclockClient
+from custom_components.btclock.api import BtclockClient, BtclockCommunicationError
 from custom_components.btclock.const import DOMAIN
 from custom_components.btclock.models import ApiVariant
 from custom_components.btclock.update import (
     _is_real_version,
+    _wait_until_back_online,
+    _parse_sha256_sidecar,
+    _release_asset_names,
     _release_notes_from_compare,
     _repo_base_from_release_url,
     _resolved_version,
@@ -566,3 +570,189 @@ async def test_release_notes_fall_back_to_compare_commits(
     assert "feat: add notifyEventSourceStatus" in notes
     _ = entry  # silence unused-var
     _ = platform
+
+
+# ---- release asset mapping ---------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "variant,hw_rev,expected",
+    [
+        # v3.x PlatformIO env names.
+        (
+            ApiVariant.V3_4,
+            "REV_B_EPD_2_13",
+            ("btclock_rev_b_213epd_firmware.bin", "littlefs_8MB.bin"),
+        ),
+        (
+            ApiVariant.LEGACY,
+            "REV_A_EPD_2_9",
+            ("lolin_s3_mini_29epd_firmware.bin", "littlefs_4MB.bin"),
+        ),
+        (ApiVariant.V3_4, "REV_B_EPD_7_5", None),
+        # v4 release workflow: btclock_<board>[_<panel>]_ota.bin + storage_<size>.bin
+        (ApiVariant.V4, "REV_A_EPD_2_13", ("btclock_rev_a_ota.bin", "storage_4mb.bin")),
+        (
+            ApiVariant.V4,
+            "REV_A_EPD_2_9",
+            ("btclock_rev_a_29_ota.bin", "storage_4mb.bin"),
+        ),
+        (ApiVariant.V4, "REV_B_EPD_2_13", ("btclock_rev_b_ota.bin", "storage_8mb.bin")),
+        (
+            ApiVariant.V4,
+            "REV_B_EPD_7_5",
+            ("btclock_rev_b_75_ota.bin", "storage_8mb.bin"),
+        ),
+        (ApiVariant.V4, "REV_V8_EPD_2_13", ("btclock_v8_ota.bin", "storage_16mb.bin")),
+        (ApiVariant.V4, "UNKNOWN", None),
+    ],
+)
+def test_release_asset_names(variant, hw_rev, expected) -> None:
+    assert _release_asset_names(variant, hw_rev) == expected
+
+
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        ("AB" * 32 + "  btclock_rev_b_ota.bin\n", "ab" * 32),
+        ("ab" * 32, "ab" * 32),
+        ("not-a-digest  file.bin", None),
+        ("", None),
+    ],
+)
+def test_parse_sha256_sidecar(text, expected) -> None:
+    assert _parse_sha256_sidecar(text) == expected
+
+
+async def test_install_specific_version_v4_uploads_storage_then_firmware(
+    hass: HomeAssistant, mock_aioresponse, load_fixture
+) -> None:
+    """Each v4 upload reboots the device: storage first, wait, firmware last.
+
+    The firmware upload carries the release's sha256 sidecar so the device
+    can reject a corrupted download.
+    """
+    settings = load_fixture("settings_v4_revb")
+    settings["gitRev"] = "4.0.0"
+    release_url = settings["gitReleaseUrl"]
+    base = "https://git.btclock.dev/btclock/btclock_v4/releases/download/4.0.0-rc.1"
+    assets = [
+        {"name": n, "browser_download_url": f"{base}/{n}"}
+        for n in (
+            "btclock_rev_a_ota.bin",
+            "btclock_rev_b_ota.bin",
+            "btclock_rev_b_ota.bin.sha256",
+            "storage_8mb.bin",
+        )
+    ]
+    mock_aioresponse.get(
+        release_url,
+        payload={"tag_name": "4.0.1", "body": "x", "assets": []},
+        repeat=True,
+    )
+    mock_aioresponse.get(
+        "https://git.btclock.dev/api/v1/repos/btclock/btclock_v4/releases/tags/4.0.0-rc.1",
+        payload={"tag_name": "4.0.0-rc.1", "assets": assets},
+    )
+    mock_aioresponse.get(f"{base}/btclock_rev_b_ota.bin", body=b"\xe9REVB")
+    mock_aioresponse.get(
+        f"{base}/btclock_rev_b_ota.bin.sha256",
+        body=("cd" * 32 + "  btclock_rev_b_ota.bin\n").encode(),
+    )
+    mock_aioresponse.get(f"{base}/storage_8mb.bin", body=b"LFS8")
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id=settings["hostname"],
+        data={CONF_HOST: settings["hostname"] + ".local"},
+    )
+    entry.add_to_hass(hass)
+
+    async def _fake_load(self: BtclockClient) -> dict:
+        self._settings = dict(settings)  # noqa: SLF001
+        self._variant = ApiVariant.V4  # noqa: SLF001
+        return self._settings  # noqa: SLF001
+
+    with (
+        patch.object(BtclockClient, "async_load_settings", _fake_load),
+        patch.object(
+            BtclockClient,
+            "async_update_status",
+            new=AsyncMock(return_value=load_fixture("status_v4_revb")),
+        ),
+        patch.object(
+            BtclockClient,
+            "async_get_frontlight_status",
+            new=AsyncMock(return_value={"flStatus": [0] * 7}),
+        ),
+        patch(
+            "custom_components.btclock.coordinator.BtclockCoordinator.async_start",
+            new=AsyncMock(),
+        ),
+    ):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    calls: list[tuple] = []
+
+    async def _fw(self, data, name, *, sha256=None):
+        calls.append(("firmware", data, name, sha256))
+
+    async def _fs(self, data, name):
+        calls.append(("webui", data, name))
+
+    async def _wait(client):
+        calls.append(("wait",))
+
+    with (
+        patch.object(BtclockClient, "async_upload_firmware", _fw),
+        patch.object(BtclockClient, "async_upload_webui", _fs),
+        patch(
+            "custom_components.btclock.update._wait_until_back_online",
+            side_effect=_wait,
+        ),
+        patch(
+            "custom_components.btclock.update.BtclockUpdate._start_install_watchdog",
+        ),
+    ):
+        await hass.services.async_call(
+            "update",
+            "install",
+            {"entity_id": "update.btclock_v4abcd_firmware", "version": "4.0.0-rc.1"},
+            blocking=True,
+        )
+
+    assert calls == [
+        ("webui", b"LFS8", "storage_8mb.bin"),
+        ("wait",),
+        ("firmware", b"\xe9REVB", "btclock_rev_b_ota.bin", "cd" * 32),
+    ]
+
+
+async def test_wait_until_back_online_polls_until_settings_load() -> None:
+    client = AsyncMock()
+    client.host = "btclock.test"
+    client.async_load_settings.side_effect = [
+        BtclockCommunicationError("down"),
+        BtclockCommunicationError("still down"),
+        {"gitRev": "4.0.0"},
+    ]
+    with (
+        patch("custom_components.btclock.update._V4_REBOOT_GRACE", 0),
+        patch("custom_components.btclock.update._V4_REBOOT_POLL", 0),
+    ):
+        await _wait_until_back_online(client)
+    assert client.async_load_settings.await_count == 3
+
+
+async def test_wait_until_back_online_times_out() -> None:
+    client = AsyncMock()
+    client.host = "btclock.test"
+    client.async_load_settings.side_effect = BtclockCommunicationError("down")
+    with (
+        patch("custom_components.btclock.update._V4_REBOOT_GRACE", 0),
+        patch("custom_components.btclock.update._V4_REBOOT_POLL", 0.01),
+        patch("custom_components.btclock.update._V4_REBOOT_TIMEOUT", 0.05),
+        pytest.raises(HomeAssistantError, match="did not come back"),
+    ):
+        await _wait_until_back_online(client)

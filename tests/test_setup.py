@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.btclock.api import BtclockClient
 from custom_components.btclock.const import DOMAIN
@@ -198,3 +198,53 @@ async def test_v4_only_entities_absent_on_older_firmware(
         assert not currency_selects
 
     await hass.config_entries.async_unload(entry.entry_id)
+
+
+@pytest.mark.parametrize(
+    ("stored", "expected"),
+    [
+        # Legacy .local entries switch to the IP the device reports …
+        ("btclock-9d5530.local", "192.168.20.97"),
+        # … while IPs and user-chosen DNS names are left untouched.
+        ("192.168.20.50", "192.168.20.50"),
+        ("btclock.example.lan", "btclock.example.lan"),
+    ],
+)
+async def test_setup_replaces_local_name_with_device_ip(
+    hass: HomeAssistant, load_fixture, stored: str, expected: str
+) -> None:
+    settings = load_fixture("settings_v3_4_revb")
+    entry = MockConfigEntry(
+        domain=DOMAIN, unique_id=settings["hostname"], data={CONF_HOST: stored}
+    )
+    entry.add_to_hass(hass)
+
+    async def _fake_load(self: BtclockClient) -> dict:
+        self._settings = settings  # noqa: SLF001
+        self._variant = ApiVariant.V3_4  # noqa: SLF001
+        return settings
+
+    with (
+        patch.object(BtclockClient, "async_load_settings", _fake_load),
+        patch.object(
+            BtclockClient,
+            "async_update_status",
+            new=AsyncMock(return_value=load_fixture("status_v3_4_revb")),
+        ),
+        patch(
+            "custom_components.btclock.coordinator.BtclockCoordinator.async_start",
+            new=AsyncMock(),
+        ),
+        # Release check isn't under test here; keep it off the network.
+        patch(
+            "custom_components.btclock.update.BtclockUpdateCoordinator._async_update_data",
+            new=AsyncMock(return_value=None),
+        ),
+    ):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert entry.data[CONF_HOST] == expected
+    # The live client already talks to the stored address — no reload needed.
+    assert entry.runtime_data.client.host == expected
+    assert entry.state.name == "LOADED"

@@ -6,6 +6,9 @@
         "description": "Tap the bottom button on the device to display its IP address.",
         "data": {
           "host": "Hostname or IP address"
+        },
+        "data_description": {
+          "host": "IP address, or a hostname. A .local name is replaced by the BTClock's IP address once it connects, so it keeps working when mDNS is unreliable."
         }
       },
       "zeroconf_confirm": {
@@ -30,6 +33,9 @@
         "description": "Change the BTClock's hostname or IP address.",
         "data": {
           "host": "Hostname or IP address"
+        },
+        "data_description": {
+          "host": "IP address, or a hostname. A .local name is replaced by the BTClock's IP address once it connects, so it keeps working when mDNS is unreliable."
         }
       },
       "update_mode": {
@@ -210,7 +216,7 @@
         },
         "duties": {
           "name": "Duties",
-          "description": "One 0-4095 PWM duty value per screen, matching the device screen count. Use an empty list to turn all channels off."
+          "description": "One 0-2048 PWM duty value per screen (2048 is the v4 frontlight ceiling), matching the device screen count. Use an empty list to turn all channels off."
         }
       }
     }

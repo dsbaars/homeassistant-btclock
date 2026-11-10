@@ -8,7 +8,7 @@ from homeassistant.components.light import LightEntityFeature
 from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.btclock.api import BtclockClient
 from custom_components.btclock.const import DOMAIN

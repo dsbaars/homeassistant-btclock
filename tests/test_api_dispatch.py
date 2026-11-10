@@ -7,7 +7,13 @@ import re
 import aiohttp
 import pytest
 
-from custom_components.btclock.api import BtclockClient, BtclockError
+from custom_components.btclock.api import (
+    BtclockAuthError,
+    BtclockClient,
+    BtclockCommunicationError,
+    BtclockError,
+    BtclockRequestError,
+)
 from custom_components.btclock.models import ApiVariant
 
 HOST = "btclock.test"
@@ -308,3 +314,128 @@ async def test_v4_patch_settings_hits_settings(mock_aioresponse, v4_client) -> N
     await v4_client.async_patch_settings({"ledBrightness": 100})
     kwargs = _recorded_kwargs(mock_aioresponse, "PATCH", "/api/settings")
     assert kwargs.get("json") == {"ledBrightness": 100}
+
+
+# ---- OTA uploads ---------------------------------------------------------------
+
+
+async def test_v4_upload_firmware_sends_raw_body_with_sha256(
+    mock_aioresponse, v4_client
+) -> None:
+    """v4 streams the raw body into flash — multipart would corrupt the image."""
+    _expect(mock_aioresponse, "POST", rf"^http://{HOST}/upload/firmware")
+    await v4_client.async_upload_firmware(
+        b"\xe9IMAGE", "btclock_rev_b_ota.bin", sha256="ab" * 32
+    )
+    kwargs = _recorded_kwargs(mock_aioresponse, "POST", "/upload/firmware")
+    assert kwargs["data"] == b"\xe9IMAGE"
+    assert kwargs["headers"]["Content-Type"] == "application/octet-stream"
+    assert kwargs["params"] == {"sha256": "ab" * 32}
+
+
+async def test_v4_upload_webui_sends_raw_body(mock_aioresponse, v4_client) -> None:
+    _expect(mock_aioresponse, "POST", rf"^http://{HOST}/upload/webui")
+    await v4_client.async_upload_webui(b"LFS", "storage_8mb.bin")
+    kwargs = _recorded_kwargs(mock_aioresponse, "POST", "/upload/webui")
+    assert kwargs["data"] == b"LFS"
+    assert kwargs["params"] is None
+
+
+async def test_v3_4_upload_firmware_stays_multipart(
+    mock_aioresponse, v3_4_client
+) -> None:
+    _expect(mock_aioresponse, "POST", rf"^http://{HOST}/upload/firmware")
+    await v3_4_client.async_upload_firmware(
+        b"\xe9IMAGE", "btclock_rev_b_213epd_firmware.bin", sha256="ab" * 32
+    )
+    kwargs = _recorded_kwargs(mock_aioresponse, "POST", "/upload/firmware")
+    assert isinstance(kwargs["data"], aiohttp.FormData)
+    assert kwargs["params"] is None
+
+
+# ---- error mapping -------------------------------------------------------------
+
+
+async def test_v4_ota_disabled_403_is_not_an_auth_error(
+    mock_aioresponse, v4_client
+) -> None:
+    """v4 answers 403 {"error":"ota_disabled"} — that must not trigger reauth."""
+    mock_aioresponse.post(
+        re.compile(rf"^http://{HOST}/api/firmware/auto_update"),
+        status=403,
+        payload={"error": "ota_disabled"},
+    )
+    with pytest.raises(BtclockRequestError, match="ota_disabled") as exc:
+        await v4_client.async_auto_update_firmware()
+    assert exc.value.status == 403
+    assert exc.value.detail == "ota_disabled"
+
+
+async def test_bare_403_still_means_auth(mock_aioresponse, v3_4_client) -> None:
+    mock_aioresponse.post(
+        re.compile(rf"^http://{HOST}/api/identify"), status=403, body=""
+    )
+    with pytest.raises(BtclockAuthError):
+        await v3_4_client.async_identify()
+
+
+async def test_401_is_auth_error(mock_aioresponse, v4_client) -> None:
+    mock_aioresponse.post(
+        re.compile(rf"^http://{HOST}/api/identify"),
+        status=401,
+        payload={"error": "unauthorized"},
+    )
+    with pytest.raises(BtclockAuthError):
+        await v4_client.async_identify()
+
+
+async def test_settings_validation_error_carries_field_reason(
+    mock_aioresponse, v4_client
+) -> None:
+    """PATCH 400 `{"error":"<field>:<reason>"}` surfaces in the message.
+
+    Still a BtclockCommunicationError, so the coordinator's optimistic
+    revert keeps working.
+    """
+    mock_aioresponse.patch(
+        re.compile(rf"^http://{HOST}/api/settings"),
+        status=400,
+        payload={"error": "fontName:unknown"},
+    )
+    with pytest.raises(BtclockCommunicationError, match="fontName:unknown"):
+        await v4_client.async_patch_settings({"fontName": "nope"})
+
+
+async def test_plain_text_error_detail(mock_aioresponse, v4_client) -> None:
+    mock_aioresponse.post(
+        re.compile(rf"^http://{HOST}/api/frontlight/brightness"),
+        status=400,
+        body="out of range",
+        content_type="text/html",
+    )
+    with pytest.raises(BtclockRequestError, match="out of range"):
+        await v4_client.async_frontlight_brightness(4095)
+
+
+# ---- auth header ---------------------------------------------------------------
+
+
+async def test_credentials_sent_as_basic_authorization_header(
+    mock_aioresponse,
+) -> None:
+    session = aiohttp.ClientSession()
+    try:
+        client = BtclockClient(HOST, session, username="admin", password="s3cret")
+        client._variant = ApiVariant.V4  # noqa: SLF001
+        _expect(mock_aioresponse, "POST", rf"^http://{HOST}/api/identify")
+        await client.async_identify()
+        kwargs = _recorded_kwargs(mock_aioresponse, "POST", "/api/identify")
+        # base64("admin:s3cret")
+        assert kwargs["headers"] == {"Authorization": "Basic YWRtaW46czNjcmV0"}
+        assert "auth" not in kwargs
+        assert client.has_auth
+        client.set_credentials(None, None)
+        assert not client.has_auth
+        assert client.auth_headers == {}
+    finally:
+        await session.close()

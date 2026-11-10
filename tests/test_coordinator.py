@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from homeassistant.const import CONF_HOST, CONF_SCAN_INTERVAL
 from homeassistant.core import HomeAssistant
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.btclock.const import (
     CONF_UPDATE_MODE,

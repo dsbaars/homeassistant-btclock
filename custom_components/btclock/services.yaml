@@ -84,8 +84,8 @@ set_frontlight_channels:
               - light.LightEntityFeature.FLASH
     duties:
       name: Duties
-      description: One 0-4095 PWM duty value per screen, matching the device screen count.
+      description: One 0-2048 PWM duty value per screen (2048 is the v4 frontlight ceiling), matching the device screen count.
       required: true
-      example: "[0, 1024, 2048, 3072, 4095, 3072, 2048]"
+      example: "[0, 512, 1024, 2048, 1024, 512, 0]"
       selector:
         object:

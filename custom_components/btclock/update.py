@@ -18,8 +18,13 @@ Install path:
     download + flash itself.
   - If the user picks a specific version, we fetch the matching firmware
     + littlefs assets from the release and upload them over
-    /upload/firmware and /upload/webui. The device reboots after the
-    second upload.
+    /upload/firmware and /upload/webui.
+      * v3.x: multipart, firmware first; the device reboots after the
+        second (webui) upload.
+      * v4: raw bodies, and *every* upload reboots the device. So the
+        storage image goes first, we wait for the device to come back, and
+        the firmware (verified on-device against the release's `.sha256`
+        sidecar) goes last so the final reboot lands in the new image.
 """
 
 from __future__ import annotations
@@ -45,9 +50,11 @@ from homeassistant.helpers.update_coordinator import (
 )
 
 from . import BtclockConfigEntry
+from .api import BtclockClient, BtclockError
 from .const import DOMAIN, LOGGER
 from .coordinator import BtclockCoordinator
 from .entity import BtclockEntity
+from .models import ApiVariant
 
 # Map the `hwRev` reported by the device (e.g. "REV_B_EPD_2_13") to the
 # PlatformIO env name used as the release-asset prefix. Keep in sync with
@@ -69,6 +76,23 @@ _LITTLEFS_SIZE: dict[str, str] = {
     "REV_B_EPD_2_9": "8MB",
     "REV_V8_EPD_2_13": "16MB",
 }
+
+# v4 (ESP-IDF) release assets, per btclock_v4's release workflow and
+# main/app/boot/init_control_api.cpp: the app image is
+# `btclock_<board>[_<panel>]_ota.bin` (+ a `<name>.sha256` sidecar), the
+# LittleFS image `storage_<flash size>.bin`. `hwRev` keeps the v3 form
+# (`REV_B_EPD_2_13`, `REV_V8_EPD_2_9`, …).
+_V4_HW_RE = re.compile(r"^REV_(A|B|V8)_EPD_(2_13|2_9|7_5)$")
+_V4_BOARD_SLUG: dict[str, str] = {"A": "rev_a", "B": "rev_b", "V8": "v8"}
+_V4_PANEL_SUFFIX: dict[str, str] = {"2_13": "", "2_9": "_29", "7_5": "_75"}
+_V4_STORAGE_SIZE: dict[str, str] = {"A": "4mb", "B": "8mb", "V8": "16mb"}
+_SHA256_RE = re.compile(r"^[0-9a-fA-F]{64}$")
+
+# v4 reboots ~0.5 s after accepting a storage upload. Give it a moment to
+# go down, then poll until the API answers again before sending firmware.
+_V4_REBOOT_GRACE = 5  # s before the first poll
+_V4_REBOOT_POLL = 3  # s between polls
+_V4_REBOOT_TIMEOUT = 180  # s until we give up waiting
 
 _SEMVER_RE = re.compile(r"^v?\d+\.\d+\.\d+(?:-[A-Za-z0-9.]+)?$")
 # `git describe` appends `-N-g<sha>` for "N commits past the last tag".
@@ -115,6 +139,48 @@ def _resolved_version(settings: dict[str, Any]) -> str | None:
         return tag
     rev = settings.get("gitRev")
     return rev or None
+
+
+def _release_asset_names(variant: ApiVariant, hw_rev: str) -> tuple[str, str] | None:
+    """Return `(firmware, filesystem)` release-asset names for this hardware."""
+    if variant is ApiVariant.V4:
+        match = _V4_HW_RE.match(hw_rev)
+        if match is None:
+            return None
+        board, panel = match.groups()
+        slug = _V4_BOARD_SLUG[board] + _V4_PANEL_SUFFIX[panel]
+        return f"btclock_{slug}_ota.bin", f"storage_{_V4_STORAGE_SIZE[board]}.bin"
+    prefix = _HW_ASSET_PREFIX.get(hw_rev)
+    fs_size = _LITTLEFS_SIZE.get(hw_rev)
+    if not prefix or not fs_size:
+        return None
+    return f"{prefix}_firmware.bin", f"littlefs_{fs_size}.bin"
+
+
+def _parse_sha256_sidecar(text: str) -> str | None:
+    """Read the digest from a `sha256sum`-style sidecar (`<hex>  <name>`)."""
+    token = text.strip().split(maxsplit=1)[0] if text.strip() else ""
+    return token.lower() if _SHA256_RE.match(token) else None
+
+
+async def _wait_until_back_online(client: BtclockClient) -> None:
+    """Block until the device answers again after an upload-triggered reboot."""
+    await asyncio.sleep(_V4_REBOOT_GRACE)
+    try:
+        async with asyncio.timeout(_V4_REBOOT_TIMEOUT):
+            while True:
+                try:
+                    await client.async_load_settings()
+                except BtclockError as err:
+                    LOGGER.debug("Waiting for %s to reboot (%s)", client.host, err)
+                    await asyncio.sleep(_V4_REBOOT_POLL)
+                else:
+                    return
+    except TimeoutError as err:
+        raise HomeAssistantError(
+            f"{client.host} did not come back within {_V4_REBOOT_TIMEOUT} s "
+            "after the WebUI upload; firmware was not uploaded"
+        ) from err
 
 
 def _repo_base_from_release_url(url: str) -> str | None:
@@ -285,19 +351,22 @@ class BtclockUpdate(BtclockEntity, UpdateEntity):
         # Default (version is None) or installing the latest: let the device
         # do the work. One request, one reboot — no bytes over the HA session.
         if version is None or version == latest:
-            await client.async_auto_update_firmware()
+            try:
+                await client.async_auto_update_firmware()
+            except BtclockError as err:
+                raise HomeAssistantError(f"Firmware update failed: {err}") from err
             self._start_install_watchdog(old_tag)
             return
 
         # Targeted version install — we have to upload the matching binaries
         # ourselves. Bail early if we can't map the hardware.
         hw_rev = (client.settings.get("hwRev") or "").upper()
-        prefix = _HW_ASSET_PREFIX.get(hw_rev)
-        fs_size = _LITTLEFS_SIZE.get(hw_rev)
-        if not prefix or not fs_size:
+        names = _release_asset_names(client.variant, hw_rev)
+        if names is None:
             raise HomeAssistantError(
                 f"Unsupported hardware for targeted install: {hw_rev}"
             )
+        firmware_name, littlefs_name = names
 
         repo_base = _repo_base_from_release_url(
             client.settings.get("gitReleaseUrl") or ""
@@ -325,28 +394,51 @@ class BtclockUpdate(BtclockEntity, UpdateEntity):
             for a in (target.get("assets") or [])
             if a.get("name") and a.get("browser_download_url")
         }
-        firmware_name = f"{prefix}_firmware.bin"
-        littlefs_name = f"littlefs_{fs_size}.bin"
         firmware_url = assets.get(firmware_name)
         littlefs_url = assets.get(littlefs_name)
+        sha256_url = assets.get(f"{firmware_name}.sha256")
         if not firmware_url:
             raise HomeAssistantError(f"Release {version} is missing {firmware_name}")
 
         async def _fetch_bytes(url: str) -> bytes:
-            async with asyncio.timeout(_BINARY_FETCH_TIMEOUT):
-                async with session.get(url) as resp:
-                    resp.raise_for_status()
-                    return await resp.read()
+            try:
+                async with asyncio.timeout(_BINARY_FETCH_TIMEOUT):
+                    async with session.get(url) as resp:
+                        resp.raise_for_status()
+                        return await resp.read()
+            except (aiohttp.ClientError, TimeoutError) as err:
+                raise HomeAssistantError(f"Failed to download {url}: {err}") from err
 
+        # Download everything before touching the device, so a failed
+        # download can't leave it half-updated.
         firmware_bytes = await _fetch_bytes(firmware_url)
-        await client.async_upload_firmware(firmware_bytes, firmware_name)
+        littlefs_bytes = await _fetch_bytes(littlefs_url) if littlefs_url else None
+        sha256: str | None = None
+        if sha256_url:
+            sha256 = _parse_sha256_sidecar(
+                (await _fetch_bytes(sha256_url)).decode("ascii", errors="replace")
+            )
 
-        # Upload webui last — the firmware's upload handler restarts the
-        # device after `Update.end()` on the final segment, so once this
-        # finishes the BTClock reboots into the new image.
-        if littlefs_url:
-            littlefs_bytes = await _fetch_bytes(littlefs_url)
-            await client.async_upload_webui(littlefs_bytes, littlefs_name)
+        try:
+            if client.variant is ApiVariant.V4:
+                # Every v4 upload reboots the device, so: storage, wait for
+                # it to come back, then firmware last.
+                if littlefs_bytes is not None:
+                    await client.async_upload_webui(littlefs_bytes, littlefs_name)
+                    await _wait_until_back_online(client)
+                await client.async_upload_firmware(
+                    firmware_bytes, firmware_name, sha256=sha256
+                )
+            else:
+                await client.async_upload_firmware(firmware_bytes, firmware_name)
+                # Upload webui last — the v3 firmware's upload handler
+                # restarts the device after `Update.end()` on the final
+                # segment, so once this finishes the BTClock reboots into
+                # the new image.
+                if littlefs_bytes is not None:
+                    await client.async_upload_webui(littlefs_bytes, littlefs_name)
+        except BtclockError as err:
+            raise HomeAssistantError(f"Firmware upload failed: {err}") from err
 
         self._start_install_watchdog(old_tag)
 

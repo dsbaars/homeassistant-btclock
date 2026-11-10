@@ -18,7 +18,9 @@ from .api import (
     BtclockClient,
     BtclockCommunicationError,
 )
+from .const import LOGGER
 from .coordinator import BtclockCoordinator
+from .host_utils import is_mdns_host, usable_ipv4
 from .services import async_register_services
 
 PLATFORMS: list[Platform] = [
@@ -46,11 +48,26 @@ async def async_setup_entry(hass: HomeAssistant, entry: BtclockConfigEntry) -> b
     )
 
     try:
-        await client.async_load_settings()
+        settings = await client.async_load_settings()
     except BtclockAuthError as err:
         raise ConfigEntryAuthFailed(str(err)) from err
     except BtclockCommunicationError as err:
         raise ConfigEntryNotReady(str(err)) from err
+
+    # Entries created before the integration stored IPs hold the device's
+    # .local name. Now that it answered, switch to the IP it reports so
+    # later connects no longer depend on an mDNS lookup. Runs before the
+    # update listener is attached, so this does not trigger a reload.
+    if is_mdns_host(entry.data[CONF_HOST]) and (ip := usable_ipv4(settings.get("ip"))):
+        LOGGER.info(
+            "Storing IP %s for %s instead of its .local name",
+            ip,
+            entry.data[CONF_HOST],
+        )
+        hass.config_entries.async_update_entry(
+            entry, data={**entry.data, CONF_HOST: ip}
+        )
+        client.set_host(ip)
 
     coordinator = BtclockCoordinator(hass, entry, client)
     await coordinator.async_config_entry_first_refresh()

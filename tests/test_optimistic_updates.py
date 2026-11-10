@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.btclock.api import BtclockClient
 from custom_components.btclock.const import DOMAIN
@@ -36,6 +36,11 @@ async def _setup(hass: HomeAssistant, settings: dict, status: dict) -> MockConfi
         patch.object(BtclockClient, "async_load_settings", _fake_load),
         patch.object(
             BtclockClient, "async_update_status", new=AsyncMock(return_value=status)
+        ),
+        # Frontlight bootstrap would otherwise hit the network (the entry's
+        # .local host is swapped for the fixture IP during setup).
+        patch.object(
+            BtclockClient, "async_get_frontlight_status", new=AsyncMock(return_value={})
         ),
         patch(
             "custom_components.btclock.coordinator.BtclockCoordinator.async_start",

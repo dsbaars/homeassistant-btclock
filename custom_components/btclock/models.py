@@ -103,7 +103,7 @@ class Frontlight(TypedDict, total=False):
     """
 
     on: bool
-    duties: list[int]  # per-panel 12-bit duty (0..4095)
+    duties: list[int]  # per-panel 12-bit duty (0..2048, the v4 ceiling)
     targetDuty: int
     configuredBrightness: int
 
@@ -118,6 +118,10 @@ class Status(TypedDict, total=False):
     espUptime: int
     espFreeHeap: int
     espHeapSize: int
+    espMinFreeHeap: int  # v4
+    espLargestFreeBlock: int  # v4
+    espFreePsram: int  # v4
+    espPsramSize: int  # v4
     connectionStatus: ConnectionStatus
     rssi: int
     currency: str
@@ -136,6 +140,7 @@ class Screen(TypedDict, total=False):
     name: str
     enabled: bool  # 3.4.0 only; legacy has no `enabled`
     order: int  # 3.4.1+ rotation order; older firmware omits it
+    kind: str  # v4, read-only: "debt" on the runtime national-debt screens
 
 
 class AvailableFont(TypedDict, total=False):
@@ -222,14 +227,40 @@ class Settings(TypedDict, total=False):
     dnd: DndSettings
 
 
+class ResetInfo(TypedDict, total=False):
+    """system_status.reset block (v4): persisted reset-reason telemetry."""
+
+    reason: str  # poweron, panic, brownout, task_wdt, …
+    history: list[str]  # last ≤4 reasons, newest first
+    boots: int
+    brownouts: int
+    crashes: int
+    prevUptimeS: int | None
+
+
+class BootloaderInfo(TypedDict, total=False):
+    """system_status.bootloader block (v4)."""
+
+    version: int | None
+    idf: str | None
+    rollback: bool
+
+
 class SystemStatus(TypedDict, total=False):
     """Shape of GET /api/system_status."""
 
     espFreeHeap: int
     espHeapSize: int
+    espMinFreeHeap: int  # v4
+    espLargestFreeBlock: int  # v4
     espFreePsram: int
     espPsramSize: int
     fsUsedBytes: int
     fsTotalBytes: int
     rssi: int
     txPower: int
+    queueDrops: dict[str, int]  # v4: buttons / led / frontlight
+    reset: ResetInfo  # v4
+    otaPartition: str  # v4: app0 / app1
+    otaState: str  # v4: valid, pendingVerify, new, invalid, aborted, undefined
+    bootloader: BootloaderInfo  # v4
